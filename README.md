@@ -13,7 +13,6 @@ This will undoubtedly end up being influenced by [Michael Nielsen's amazing eBoo
 
 
 ### File descriptions
-- [four_layer_nn.py](four_layer_nn.py): Main code for counting beads per droplet
-_________________________________________
+- [four_layer_nn.py](four_layer_nn.py): MNIST classifier network with two hidden layers, 98.1% accuracy after 200 epochs of training (~2 hours)
 
-<sup>1</sup>Right after getting good results, I learned that the things I originally thought were cells are actually beads that serve as containers for cells. I may not have caught all the old references to cells. 
+_________________________________________
