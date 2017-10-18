@@ -10,7 +10,8 @@ With lambda = 0.1, still 98.1%, but slightly worse. Doesn't seem like a situatio
 
 
 def rough_print(num_arr):
-    """Simple way to print a 784-length number array, outputting '.' for every cell == 0 and 'X' for cells > 0
+    """
+    Simple way to print a 784-length number array, outputting '.' for every cell == 0 and 'X' for cells > 0
     """
     new_shape = num_arr.reshape((28, 28))
     for row in new_shape:
@@ -23,7 +24,10 @@ def rough_print(num_arr):
         print(row_str)
 
 
-def shuffle_and_parse(data_obj):
+def shuffle_data(data_obj):
+    """
+    Given a data_obj with ['data'] and ['target] entries, shuffles them and returns them as separate arrays.
+    """
     d = data_obj['data']
     t = data_obj['target'].reshape(-1, 1)
     joint_arr = np.hstack((d, t))
@@ -34,16 +38,33 @@ def shuffle_and_parse(data_obj):
     return new_d, new_t
 
 
-def initialize_weight_array(l, w, stddev=0.1):
+def initialize_weight_array(l, w, stddev=None, relu=False, sigma_cutoff=2.0):
+    """
+    Initializes a weight array with l rows and w columns.
+    If stddev is not specified, default initialization is designed to create a variance of 1.0,
+    meaning stddev is sqrt(1 / N_in). If the weight array is going to be used with relu
+    activation, the default stddev will be sqrt(2 / N_in), since presumably half the neurons
+    won't fire.
+    sigma_cutoff determines the max number of stddevs away from 0 an initialized value can be.
+    """
+    if stddev is None:
+        if relu:
+            stddev = (2.0 / l) ** 0.5
+        else:
+            stddev = (1.0 / l) ** 0.5
+
     weights = []
     while len(weights) < l * w:
         new_rand_val = np.random.randn() * stddev
-        if abs(new_rand_val) < 2 * stddev:
+        if abs(new_rand_val) < sigma_cutoff * stddev:
             weights.append(new_rand_val)
     return np.array(weights).reshape(l, w)
 
 
 def one_hot_encode(targets):
+    """
+    One hot encodes targets. [4] --> [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    """
     encoded_data = []
     for t in targets:
         new_t = np.zeros(10)
@@ -52,15 +73,22 @@ def one_hot_encode(targets):
     return np.array(encoded_data)
 
 
-def prediction_MSE(y, y_pred):
-    return 0.5 * sum((y[i] - y_pred[i]) ** 2 for i in range(0, len(y)))
+def prediction_mse(y_actual, y_pred):
+    """
+    Returns mean-square error between actual y and predicted y.
+    """
+    return 0.5 * sum((y_actual[i] - y_pred[i]) ** 2 for i in range(0, len(y_actual)))
 
 
-def prediction_CEL(y, y_pred):
-    if y.ndim == 1:
-        y = [z]
+def prediction_cel(y_actual, y_pred):
+    """
+    Returns cross-entropy loss between actual y and predicted y.
+    """
+    if y_actual.ndim == 1:
+        y_actual = [z]
         y_pred = [y_pred]
-    return -1.0 / (len(y) * len(y[0])) * np.sum(y * np.log(y_pred) + (1.0 - y) * np.log(1.0 - y_pred))
+    size = len(y_actual) * len(y_actual[0])
+    return -1.0 / size * np.sum(y_actual * np.log(y_pred) + (1.0 - y_actual) * np.log(1.0 - y_pred))
 
 
 def make_prediction(x):
@@ -140,7 +168,7 @@ The images are 28 by 28, with the first 28 integers in the length 784 vector con
 mnist = fetch_mldata('MNIST original')
 
 
-mnist_data, mnist_targets = shuffle_and_parse(mnist)
+mnist_data, mnist_targets = shuffle_data(mnist)
 
 mnist_targets = mnist_targets.astype(int)
 one_hot_targets = one_hot_encode(mnist_targets)
@@ -175,9 +203,14 @@ l3 = 50
 l4 = 10
 
 # initialize weights
-W1 = initialize_weight_array(l1, l2, stddev=0.03)
-W2 = initialize_weight_array(l2, l3, stddev=0.06)
-W3 = initialize_weight_array(l3, l4, stddev=0.14)
+W1 = initialize_weight_array(l1, l2)
+W2 = initialize_weight_array(l2, l3)
+W3 = initialize_weight_array(l3, l4)
+
+print(W1.std())
+print(W2.std())
+print(W3.std())
+quit()
 
 # initialize biases
 b1 = np.zeros(l2)
