@@ -85,7 +85,7 @@ def prediction_cel(y_actual, y_pred):
     Returns cross-entropy loss between actual y and predicted y.
     """
     if y_actual.ndim == 1:
-        y_actual = [z]
+        y_actual = [y_actual]
         y_pred = [y_pred]
     size = len(y_actual) * len(y_actual[0])
     return -1.0 / size * np.sum(y_actual * np.log(y_pred) + (1.0 - y_actual) * np.log(1.0 - y_pred))
@@ -100,31 +100,13 @@ def make_prediction(x):
     return y_hat.argmax()
 
 
-def validation_accuracy():
+def accuracy(imgs, int_labels):
     correct = 0.0
-    for a in range(len(validation_data)):
-        y_pred = make_prediction(validation_data[a])
-        if y_pred == validation_targets_as_int[a]:
+    for img, int_label in zip(imgs, int_labels):
+        y_pred = make_prediction(img)
+        if y_pred == int_label:
             correct += 1
-    return round(correct / len(validation_data), 4)
-
-
-def training_accuracy():
-    correct = 0.0
-    for a in range(len(training_data)):
-        y_pred = make_prediction(training_data[a])
-        if y_pred == training_targets_as_int[a]:
-            correct += 1
-    return round(correct / len(training_data), 4)
-
-
-def test_accuracy():
-    correct = 0.0
-    for a in range(len(test_data)):
-        y_pred = make_prediction(test_data[a])
-        if y_pred == test_targets_as_int[a]:
-            correct += 1
-    return round(correct / len(test_data), 4)
+    return correct / len(imgs)
 
 
 def sigmoid(x):
@@ -207,11 +189,6 @@ W1 = initialize_weight_array(l1, l2)
 W2 = initialize_weight_array(l2, l3)
 W3 = initialize_weight_array(l3, l4)
 
-print(W1.std())
-print(W2.std())
-print(W3.std())
-quit()
-
 # initialize biases
 b1 = np.zeros(l2)
 b2 = np.zeros(l3)
@@ -220,7 +197,7 @@ alpha = 0.01
 
 lam = 0.1
 
-N = 200
+N = 10
 batch_size = 10
 num_batches = training_n // batch_size
 
@@ -261,9 +238,9 @@ for i in range(N):
         b1 += alpha / batch_size * delta_h1o.sum(axis=0)
         b2 += alpha / batch_size * delta_h2o.sum(axis=0)
 
-    print("Epoch", i, "\t Validation acc.:", validation_accuracy(),
-          "\t Training acc.:", round(correct_count / training_n, 4))
+    print("Epoch {:>3}\t Validation acc: {:>5.3f} \t Training acc: {:>5.3f}".format
+          (i, accuracy(validation_data, validation_targets_as_int), correct_count / training_n, 4))
 
 
-print("Final training accuracy:", training_accuracy())
-print("Final test accuracy:", test_accuracy())
+print("Final training accuracy: {:>5.3f}".format(accuracy(training_data, training_targets_as_int)))
+print("Final test accuracy: {:>5.3f}".format(accuracy(test_data, test_targets_as_int)))
