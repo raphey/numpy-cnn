@@ -4,11 +4,6 @@ import numpy as np
 from sklearn.datasets import fetch_mldata
 
 
-"""L2 regularization with a 4-layer network. With 200 epochs, batch size 10, test accuracy gets to 98.1% with no L2reg.
-With lambda = 0.1, still 98.1%, but slightly worse. Doesn't seem like a situation in which regularization is needed.
-"""
-
-
 def rough_print(num_arr):
     """
     Simple way to print a 784-length number array, outputting '.' for every cell == 0 and 'X' for cells > 0
@@ -42,7 +37,8 @@ def shuffle_data(data_obj, random_seed=0):
 def import_and_prepare_data(valid_portion=0.1, test_portion=0.1, flat=True):
     """
     Imports mnist data, shuffles it, and splits it into training, validation, and testing sets.
-    Flat parameter is not used yet--for convolutional net later on
+
+    If flat parameter is set to False, each image will be reshaped from (784) to (28 x 28 x 1), for convolution.
 
     training, validation, and testing are dicts with three keys each:
       'x': the image data
@@ -55,6 +51,10 @@ def import_and_prepare_data(valid_portion=0.1, test_portion=0.1, flat=True):
     data_size = len(mnist['data'])
 
     img_data, int_targets = shuffle_data(mnist)
+
+    if not flat:
+        img_data = img_data.reshape(-1, 28, 28, 1)
+
     scaled_data = img_data / 255.0
 
     int_targets = int_targets.astype(int)
@@ -122,15 +122,15 @@ def prediction_cel(y_actual, y_pred):
         y_actual = [y_actual]
         y_pred = [y_pred]
     size = len(y_actual) * len(y_actual[0])
-    return -1.0 / size * np.sum(y_actual * np.log(y_pred) + (1.0 - y_actual) * np.log(1.0 - y_pred))
+    return -1.0 / size * np.sum(y_actual * np.log(y_pred) + np.log(1.0 - y_pred)) * (1.0 - y_actual)
 
 
 def make_prediction(x):
-    h1_out = np.dot(x, W1) + b1
+    h1_out = np.dot(x, w1) + b1
     sig_h1 = sigmoid(h1_out)
-    h2_out = np.dot(sig_h1, W2) + b2
+    h2_out = np.dot(sig_h1, w2) + b2
     sig_h2 = sigmoid(h2_out)
-    y_hat = np.dot(sig_h2, W3)
+    y_hat = np.dot(sig_h2, w3)
     return y_hat.argmax()
 
 
@@ -144,7 +144,7 @@ def accuracy(imgs, int_labels):
 
 
 def sigmoid(x):
-    return 1.0 / (1.0 + np.exp(-x))
+    return np.ones(shape=x.shape) / (1.0 + np.exp(-x))
 
 
 def soft_max(z):
@@ -159,20 +159,68 @@ def test_and_show_random_digit():
     j = np.random.randint(len(testing['x']))
     x = testing['x'][j]
     y = testing['y_as_int'][j]
-    h1_out = np.dot(x, W1) + b1
+    h1_out = np.dot(x, w1) + b1
     sig_h1 = sigmoid(h1_out)
-    z_L = np.dot(sig_h1, W2)
-    a_L = soft_max(z_L)
+    z_l = np.dot(sig_h1, w2)
+    a_l = soft_max(z_l)
     print("---------------------------------")
     print("Hand-written digit:")
     rough_print(x)
     print("Softmax predictions:")
-    predictions = list(zip(range(10), a_L[0]))
-    predictions.sort(reverse=True, key=lambda x: x[1])
-    for j in range(0, 3):
-        print("  %s: \t %.3f" % predictions[j])
+    predictions = list(zip(range(10), a_l[0]))
+    predictions.sort(reverse=True, key=lambda a: a[1])
+    for k in range(0, 3):
+        print("  {}: \t {:>5.3f}".format(predictions[k][0], predictions[k][1]))
     print("Actual value:", y)
     print()
+
+
+def train_model(alpha=0.01, epochs=100, batch_size=10, lam=0.1):
+    global w1, w2, w3, b1, b2
+    num_batches = training_size // batch_size
+    for i in range(epochs):
+        # (Switched to using training accuracy
+        # training_loss = 0.0
+        correct_count = 0
+        for j in range(num_batches):
+            start_index = j * batch_size
+            end_index = start_index + batch_size
+            x = training['x'][start_index: end_index]
+            y = training['y_'][start_index: end_index]
+
+            h1_out = np.dot(x, w1) + b1
+            sig_h1 = sigmoid(h1_out)
+            h2_out = np.dot(sig_h1, w2) + b2
+            sig_h2 = sigmoid(h2_out)
+            z_l = np.dot(sig_h2, w3)
+            a_l = sigmoid(z_l)
+
+            for ii in range(len(x)):
+                if list(y[ii]).index(1.0) == list(a_l[ii]).index(max(a_l[ii])):
+                    correct_count += 1
+
+            y_diff = y - a_l
+
+            delta_h2o = np.dot(y_diff, w3.T) * sig_h2 * (np.ones(shape=sig_h2.shape) - sig_h2)
+            delta_h1o = np.dot(delta_h2o, w2.T) * sig_h1 * (np.ones(shape=sig_h2.shape) - sig_h1)
+
+            w1 += -alpha * lam / training_size * w1
+            w1 += alpha / batch_size * np.dot(x.T, delta_h1o)
+
+            w2 += -alpha * lam / training_size * w2
+            w2 += alpha / batch_size * np.dot(sig_h1.T, delta_h2o)
+
+            w3 += -alpha * lam / training_size * w3
+            w3 += alpha / batch_size * np.dot(sig_h2.T, y_diff)
+
+            b1 += alpha / batch_size * delta_h1o.sum(axis=0)
+            b2 += alpha / batch_size * delta_h2o.sum(axis=0)
+
+        print("Epoch {:>3}\t Avg epoch training acc: {:>5.3f}\t Validation acc: {:>5.3f} ".format
+              (i + 1, correct_count / training_size, accuracy(validation['x'], validation['y_as_int'])))
+
+    print("Final training accuracy: {:>5.3f}".format(accuracy(training['x'], training['y_as_int'])))
+    print("Final test accuracy: {:>5.3f}".format(accuracy(testing['x'], testing['y_as_int'])))
 
 
 training, validation, testing = import_and_prepare_data(0.1, 0.1)
@@ -186,62 +234,15 @@ l3 = 50
 l4 = 10
 
 # initialize weights
-W1 = initialize_weight_array(l1, l2)
-W2 = initialize_weight_array(l2, l3)
-W3 = initialize_weight_array(l3, l4)
+w1 = initialize_weight_array(l1, l2)
+w2 = initialize_weight_array(l2, l3)
+w3 = initialize_weight_array(l3, l4)
 
 # initialize biases
 b1 = np.zeros(l2)
 b2 = np.zeros(l3)
 
-alpha = 0.01
+train_model(epochs=2)
 
-lam = 0.1
-
-N = 10
-batch_size = 10
-num_batches = training_size // batch_size
-
-for i in range(N):
-    training_loss = 0.0
-    correct_count = 0
-    for j in range(num_batches):
-        start_index = j * batch_size
-        end_index = start_index + batch_size
-        x = training['x'][start_index: end_index]
-        y = training['y_'][start_index: end_index]
-
-        h1_out = np.dot(x, W1) + b1
-        sig_h1 = sigmoid(h1_out)
-        h2_out = np.dot(sig_h1, W2) + b2
-        sig_h2 = sigmoid(h2_out)
-        z_L = np.dot(sig_h2, W3)
-        a_L = sigmoid(z_L)
-
-        for ii in range(len(x)):
-            if list(y[ii]).index(1.0) == list(a_L[ii]).index(max(a_L[ii])):
-                correct_count += 1
-
-        y_diff = y - a_L
-
-        delta_h2o = np.dot(y_diff, W3.T) * sig_h2 * (1 - sig_h2)
-        delta_h1o = np.dot(delta_h2o, W2.T) * sig_h1 * (1 - sig_h1)
-
-        W1 += -alpha * lam / training_size * W1
-        W1 += alpha / batch_size * np.dot(x.T, delta_h1o)
-
-        W2 += -alpha * lam / training_size * W2
-        W2 += alpha / batch_size * np.dot(sig_h1.T, delta_h2o)
-
-        W3 += -alpha * lam / training_size * W3
-        W3 += alpha / batch_size * np.dot(sig_h2.T, y_diff)
-
-        b1 += alpha / batch_size * delta_h1o.sum(axis=0)
-        b2 += alpha / batch_size * delta_h2o.sum(axis=0)
-
-    print("Epoch {:>3}\t Validation acc: {:>5.3f} \t Training acc: {:>5.3f}".format
-          (i + 1, accuracy(validation['x'], validation['y_as_int']), correct_count / training_size, 4))
-
-
-print("Final training accuracy: {:>5.3f}".format(accuracy(training['x'], training['y_as_int'])))
-print("Final test accuracy: {:>5.3f}".format(accuracy(testing['x'], testing['y_as_int'])))
+test_and_show_random_digit()
+test_and_show_random_digit()

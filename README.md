@@ -7,8 +7,6 @@ This will undoubtedly end up being influenced by [Michael Nielsen's amazing eBoo
 
 ### To-do
 
-- Add documentation to four_layer_nn
-- Clean up code, remove shadowing
 - Put general utility functions in separate module
 - Make a generalized non-convolutional network (weights and biases as lists, presumably)
 - Implement saving/loading of model
