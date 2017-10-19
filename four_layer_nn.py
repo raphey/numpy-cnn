@@ -62,12 +62,20 @@ def import_and_prepare_data(valid_portion=0.1, test_portion=0.1, flat=True):
     one_hots = one_hot_encode(int_targets)
 
     # Cutoff indices between training/validation and validation/testing
-    cut_1 = int((1.0 - valid_portion - test_portion) * data_size)
-    cut_2 = int((1.0 - test_portion) * data_size)
+    validation_start = int((1.0 - valid_portion - test_portion) * data_size)
+    testing_start = int((1.0 - test_portion) * data_size)
 
-    train = {'x': scaled_data[:cut_1], 'y_': one_hots[:cut_1], 'y_as_int': int_targets[:cut_1]}
-    valid = {'x': scaled_data[cut_1: cut_2], 'y_': one_hots[cut_1: cut_2], 'y_as_int': int_targets[cut_1: cut_2]}
-    test = {'x': scaled_data[cut_2:], 'y_': one_hots[cut_2:], 'y_as_int': int_targets[cut_2:]}
+    train = {'x': scaled_data[:validation_start],
+             'y_': one_hots[:validation_start],
+             'y_as_int': int_targets[:validation_start]}
+
+    valid = {'x': scaled_data[validation_start: testing_start],
+             'y_': one_hots[validation_start: testing_start],
+             'y_as_int': int_targets[validation_start: testing_start]}
+
+    test = {'x': scaled_data[testing_start:],
+            'y_': one_hots[testing_start:],
+            'y_as_int': int_targets[testing_start:]}
 
     return train, valid, test
 
@@ -161,13 +169,16 @@ def test_and_show_random_digit():
     y = testing['y_as_int'][j]
     h1_out = np.dot(x, w1) + b1
     sig_h1 = sigmoid(h1_out)
-    z_l = np.dot(sig_h1, w2)
-    a_l = soft_max(z_l)
+    h2_out = np.dot(sig_h1, w2) + b2
+    sig_h2 = sigmoid(h2_out)
+    z_l = np.dot(sig_h2, w3)
+    a_l = sigmoid(z_l)
+
     print("---------------------------------")
     print("Hand-written digit:")
     rough_print(x)
     print("Softmax predictions:")
-    predictions = list(zip(range(10), a_l[0]))
+    predictions = list(zip(range(10), a_l))
     predictions.sort(reverse=True, key=lambda a: a[1])
     for k in range(0, 3):
         print("  {}: \t {:>5.3f}".format(predictions[k][0], predictions[k][1]))
@@ -202,7 +213,7 @@ def train_model(alpha=0.01, epochs=100, batch_size=10, lam=0.1):
             y_diff = y - a_l
 
             delta_h2o = np.dot(y_diff, w3.T) * sig_h2 * (np.ones(shape=sig_h2.shape) - sig_h2)
-            delta_h1o = np.dot(delta_h2o, w2.T) * sig_h1 * (np.ones(shape=sig_h2.shape) - sig_h1)
+            delta_h1o = np.dot(delta_h2o, w2.T) * sig_h1 * (np.ones(shape=sig_h1.shape) - sig_h1)
 
             w1 += -alpha * lam / training_size * w1
             w1 += alpha / batch_size * np.dot(x.T, delta_h1o)
@@ -242,7 +253,7 @@ w3 = initialize_weight_array(l3, l4)
 b1 = np.zeros(l2)
 b2 = np.zeros(l3)
 
-train_model(epochs=2)
+train_model(batch_size=64, epochs=10)
 
-test_and_show_random_digit()
-test_and_show_random_digit()
+for _ in range(10):
+    test_and_show_random_digit()

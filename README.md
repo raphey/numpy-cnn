@@ -8,6 +8,7 @@ This will undoubtedly end up being influenced by [Michael Nielsen's amazing eBoo
 ### To-do
 
 - Put general utility functions in separate module
+- Add nicer data shuffling with sci-kit-learn
 - Make a generalized non-convolutional network (weights and biases as lists, presumably)
 - Implement saving/loading of model
 
