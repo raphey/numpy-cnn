@@ -24,10 +24,11 @@ def rough_print(num_arr):
         print(row_str)
 
 
-def shuffle_data(data_obj):
+def shuffle_data(data_obj, random_seed=0):
     """
     Given a data_obj with ['data'] and ['target] entries, shuffles them and returns them as separate arrays.
     """
+    np.random.seed(seed=random_seed)
     d = data_obj['data']
     t = data_obj['target'].reshape(-1, 1)
     joint_arr = np.hstack((d, t))
@@ -36,6 +37,39 @@ def shuffle_data(data_obj):
     new_d = joint_arr[:784].T
     new_t = joint_arr[-1].T
     return new_d, new_t
+
+
+def import_and_prepare_data(valid_portion=0.1, test_portion=0.1, flat=True):
+    """
+    Imports mnist data, shuffles it, and splits it into training, validation, and testing sets.
+    Flat parameter is not used yet--for convolutional net later on
+
+    training, validation, and testing are dicts with three keys each:
+      'x': the image data
+      'y_': the one-hot encoded labels
+      'y_as_int': the labels as integers, for quick accuracy checking
+
+    """
+
+    mnist = fetch_mldata('MNIST original')
+    data_size = len(mnist['data'])
+
+    img_data, int_targets = shuffle_data(mnist)
+    scaled_data = img_data / 255.0
+
+    int_targets = int_targets.astype(int)
+
+    one_hots = one_hot_encode(int_targets)
+
+    # Cutoff indices between training/validation and validation/testing
+    cut_1 = int((1.0 - valid_portion - test_portion) * data_size)
+    cut_2 = int((1.0 - test_portion) * data_size)
+
+    train = {'x': scaled_data[:cut_1], 'y_': one_hots[:cut_1], 'y_as_int': int_targets[:cut_1]}
+    valid = {'x': scaled_data[cut_1: cut_2], 'y_': one_hots[cut_1: cut_2], 'y_as_int': int_targets[cut_1: cut_2]}
+    test = {'x': scaled_data[cut_2:], 'y_': one_hots[cut_2:], 'y_as_int': int_targets[cut_2:]}
+
+    return train, valid, test
 
 
 def initialize_weight_array(l, w, stddev=None, relu=False, sigma_cutoff=2.0):
@@ -122,9 +156,9 @@ def soft_max(z):
 
 
 def test_and_show_random_digit():
-    i = np.random.randint(len(test_data))
-    x = test_data[i]
-    y = test_targets_as_int[i]
+    j = np.random.randint(len(testing['x']))
+    x = testing['x'][j]
+    y = testing['y_as_int'][j]
     h1_out = np.dot(x, W1) + b1
     sig_h1 = sigmoid(h1_out)
     z_L = np.dot(sig_h1, W2)
@@ -135,47 +169,14 @@ def test_and_show_random_digit():
     print("Softmax predictions:")
     predictions = list(zip(range(10), a_L[0]))
     predictions.sort(reverse=True, key=lambda x: x[1])
-    for i in range(0, 3):
-        print("  %s: \t %.3f" % predictions[i])
+    for j in range(0, 3):
+        print("  %s: \t %.3f" % predictions[j])
     print("Actual value:", y)
     print()
 
 
-"""
-mnist is an sklearn object with attributes 'data', 'target' and two others, 'COL_NAMES' and 'DESCR'
-mnist['target'] is a list of 70000 correct number labels, as floats.
-mnist['data'] is the image data for the 70000 numbers, each of which is a length 784 vector of integers from 0 to 255.
-The images are 28 by 28, with the first 28 integers in the length 784 vector constituting the first row.
-"""
-mnist = fetch_mldata('MNIST original')
-
-
-mnist_data, mnist_targets = shuffle_data(mnist)
-
-mnist_targets = mnist_targets.astype(int)
-one_hot_targets = one_hot_encode(mnist_targets)
-scaled_mnist_data = mnist_data / 255.0
-
-
-test_portion = 0.1          # Portion of data reserved for testing
-validation_portion = 0.1    # Portion of non-testing data reserved for validation
-
-test_cutoff = int(len(scaled_mnist_data) * (1 - test_portion))      # index of first piece of data/target for testing
-training_n = int(test_cutoff * (1 - validation_portion))   # index of first piece of data/target for validation
-
-
-# Splitting data into training, validation, and testing
-training_targets = one_hot_targets[:training_n]
-training_targets_as_int = mnist_targets[:training_n]
-training_data = scaled_mnist_data[:training_n]
-
-validation_targets = one_hot_targets[training_n:test_cutoff]
-validation_targets_as_int = mnist_targets[training_n:test_cutoff]
-validation_data = scaled_mnist_data[training_n:test_cutoff]
-
-test_targets = one_hot_targets[test_cutoff:]
-test_targets_as_int = mnist_targets[test_cutoff:]
-test_data = scaled_mnist_data[test_cutoff:]
+training, validation, testing = import_and_prepare_data(0.1, 0.1)
+training_size = len(training['x'])
 
 
 # define layer sizes
@@ -199,7 +200,7 @@ lam = 0.1
 
 N = 10
 batch_size = 10
-num_batches = training_n // batch_size
+num_batches = training_size // batch_size
 
 for i in range(N):
     training_loss = 0.0
@@ -207,8 +208,8 @@ for i in range(N):
     for j in range(num_batches):
         start_index = j * batch_size
         end_index = start_index + batch_size
-        x = training_data[start_index: end_index]
-        y = training_targets[start_index: end_index]
+        x = training['x'][start_index: end_index]
+        y = training['y_'][start_index: end_index]
 
         h1_out = np.dot(x, W1) + b1
         sig_h1 = sigmoid(h1_out)
@@ -226,21 +227,21 @@ for i in range(N):
         delta_h2o = np.dot(y_diff, W3.T) * sig_h2 * (1 - sig_h2)
         delta_h1o = np.dot(delta_h2o, W2.T) * sig_h1 * (1 - sig_h1)
 
-        W1 += -alpha * lam / training_n * W1
+        W1 += -alpha * lam / training_size * W1
         W1 += alpha / batch_size * np.dot(x.T, delta_h1o)
 
-        W2 += -alpha * lam / training_n * W2
+        W2 += -alpha * lam / training_size * W2
         W2 += alpha / batch_size * np.dot(sig_h1.T, delta_h2o)
 
-        W3 += -alpha * lam / training_n * W3
+        W3 += -alpha * lam / training_size * W3
         W3 += alpha / batch_size * np.dot(sig_h2.T, y_diff)
 
         b1 += alpha / batch_size * delta_h1o.sum(axis=0)
         b2 += alpha / batch_size * delta_h2o.sum(axis=0)
 
     print("Epoch {:>3}\t Validation acc: {:>5.3f} \t Training acc: {:>5.3f}".format
-          (i, accuracy(validation_data, validation_targets_as_int), correct_count / training_n, 4))
+          (i + 1, accuracy(validation['x'], validation['y_as_int']), correct_count / training_size, 4))
 
 
-print("Final training accuracy: {:>5.3f}".format(accuracy(training_data, training_targets_as_int)))
-print("Final test accuracy: {:>5.3f}".format(accuracy(test_data, test_targets_as_int)))
+print("Final training accuracy: {:>5.3f}".format(accuracy(training['x'], training['y_as_int'])))
+print("Final test accuracy: {:>5.3f}".format(accuracy(testing['x'], testing['y_as_int'])))
