@@ -130,7 +130,7 @@ def prediction_cel(y_actual, y_pred):
         y_actual = [y_actual]
         y_pred = [y_pred]
     size = len(y_actual) * len(y_actual[0])
-    return -1.0 / size * np.sum(y_actual * np.log(y_pred) + np.log(1.0 - y_pred)) * (1.0 - y_actual)
+    return -1.0 / size * np.sum(y_actual * np.log(y_pred) + np.log(1.0 - y_pred) * (1.0 - y_actual))
 
 
 def make_prediction(x):
@@ -172,13 +172,13 @@ def test_and_show_random_digit():
     h2_out = np.dot(sig_h1, w2) + b2
     sig_h2 = sigmoid(h2_out)
     z_l = np.dot(sig_h2, w3)
-    a_l = sigmoid(z_l)
+    a_l = soft_max(z_l)
 
     print("---------------------------------")
     print("Hand-written digit:")
     rough_print(x)
     print("Softmax predictions:")
-    predictions = list(zip(range(10), a_l))
+    predictions = list(zip(range(10), a_l[0]))
     predictions.sort(reverse=True, key=lambda a: a[1])
     for k in range(0, 3):
         print("  {}: \t {:>5.3f}".format(predictions[k][0], predictions[k][1]))
@@ -204,7 +204,7 @@ def train_model(alpha=0.01, epochs=100, batch_size=10, lam=0.1):
             h2_out = np.dot(sig_h1, w2) + b2
             sig_h2 = sigmoid(h2_out)
             z_l = np.dot(sig_h2, w3)
-            a_l = sigmoid(z_l)
+            a_l = soft_max(z_l)
 
             for ii in range(len(x)):
                 if list(y[ii]).index(1.0) == list(a_l[ii]).index(max(a_l[ii])):
@@ -235,6 +235,7 @@ def train_model(alpha=0.01, epochs=100, batch_size=10, lam=0.1):
 
 
 if __name__ == "__main__":
+
     training, validation, testing = import_and_prepare_data(0.1, 0.1)
     training_size = len(training['x'])
 
