@@ -46,9 +46,10 @@ class SimpleLinearLayer(Layer):
     def __init__(self, rows, cols):
         self.shape = (rows, cols)
         self.w = initialize_weight_array(rows, cols)
+        self.b = np.zeros(shape=(1, cols))
 
     def forward_pass(self):
-        self.output = np.dot(self.input, self.w)
+        self.output = np.dot(self.input, self.w) + self.b
         return self.output
 
     def backward_pass(self, alpha, lam=0.0):
@@ -56,6 +57,7 @@ class SimpleLinearLayer(Layer):
         if lam:
             self.w += alpha * lam * self.w
         self.w += alpha * np.dot(self.input.T, self.output_side_deltas)
+        self.b += alpha * self.output_side_deltas.sum(axis=0)
         return self.input_side_deltas
 
 
@@ -111,10 +113,7 @@ x_train, y_train, x_test, y_test = read_input(input_text)
 x_data = {'train': x_train, 'test': x_test}
 y_data = {'train': y_train, 'test': y_test}
 
-# print(x_test.shape)
-
 lin_reg_network = Network([SimpleLinearLayer(2, 1)])
-# print(lin_reg_network.feed_forward(x_test))
 
 lin_reg_network.train(x_data, y_data, alpha=0.01, epochs=100000)
 
