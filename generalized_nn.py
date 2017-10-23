@@ -1,9 +1,25 @@
 __author__ = 'raphey'
 
 import numpy as np
-
+from four_layer_nn import import_and_prepare_data, rough_print
 
 class Network(object):
+    """
+    Base class for a neural net.
+
+    self.layers is a list of layers going in order from input to output.
+    With this structure, activation functions count as separate layers.
+
+    self.feed_forward uses a series of layer forward_pass methods to go
+    from an input into an output and also sets the input and output
+    properties of the corresponding layers.
+
+    self.feed_backward uses a series of layer backward_pass methods to
+    go from output deltas backwards through the network, and modifies
+    layers if applicable
+
+    self.train trains the network.
+    """
     def __init__(self, layers):
         self.layers = layers
 
@@ -14,22 +30,75 @@ class Network(object):
         self.layers[-1].forward_pass()
         return self.layers[-1].output
 
-    def feed_backward(self, delta_y_out, alpha):
+    def feed_backward(self, delta_y_out, alpha, lam=0.0):
         self.layers[-1].output_side_deltas = delta_y_out
         for i in range(len(self.layers) - 1, 0, -1):
             self.layers[i - 1].output_side_deltas = self.layers[i].backward_pass(alpha)
         self.layers[0].backward_pass(alpha)
 
-    def train(self, x_data, y_data, alpha, epochs, verbose=False):
+    def train(self, x_data, y_data, alpha, epochs, lam=0.0, verbose=False):
+        print("Training network with alpha={}, lambda={} for {} epochs...".format(alpha, lam, epochs))
         x_training, x_testing = x_data['train'], x_data['test']
         y_training, y_testing = y_data['train'], y_data['test']
         for e in range(1, epochs + 1):
             delta_y = y_training - self.feed_forward(x_training)
-            self.feed_backward(delta_y, alpha)
+            self.feed_backward(delta_y, alpha, lam)
+            if verbose and e % 100 == 0:
+                print("Epoch {:>3}\t Training loss: {:>5.3f}".format
+                      (e, self.mse_cost(y_predicted=self.layers[-1].output, y_actual=y_training)))
+        print("Training complete. Testing loss: {:>5.3f}".format
+              (self.mse_cost(y_predicted=self.feed_forward(x_testing), y_actual=y_testing)))
+
+    @staticmethod
+    def mse_cost(y_predicted, y_actual):
+        """
+        Prints total mean-square error for predicted values and actual values.
+        """
+        return ((y_actual - y_predicted)**2).mean()
+
+
+class Classifier(Network):
+    """
+    Classifier network, with an alternate training method, and additional methods:
+
+    """
+
+    def accuracy(self, x_input, labels_as_values):
+        correct = 0.0
+        all_output = self.feed_forward(x_input)
+        for logit, label in zip(all_output, labels_as_values):
+            if np.argmax(logit) == label:
+                correct += 1
+        return correct / len(x_input)
+
+    def train(self, training, validation, testing, alpha, epochs, lam=0.0, verbose=False):
+        print("Training network with alpha={}, lambda={} for {} epochs...".format(alpha, lam, epochs))
+        x_training, x_testing = training['x'], testing['x']
+        y_training_int, y_testing_int = training['y_as_int'], testing['y_as_int']
+        y_training_one_hot, y_testing_one_hot = training['y_'], testing['y_']
+
+        batch_size = 128
+        num_batches = len(x_training) // batch_size
+
+        for e in range(1, epochs + 1):
+            training_loss = 0.0
+            for j in range(num_batches):
+                start_index = j * batch_size
+                end_index = start_index + batch_size
+                x = x_training[start_index: end_index]
+                y_ = y_training_one_hot[start_index: end_index]
+                delta_y = y_ - self.feed_forward(x)
+                self.feed_backward(delta_y, alpha / num_batches, lam)
+                training_loss += self.mse_cost(y_predicted=self.layers[-1].output, y_actual=y_)
+            if verbose and e % 10 == 0:
+                print("Epoch {:>3}\t Training loss: {:>5.3f}".format(e, training_loss / num_batches))
+        print("Training complete. Testing loss: {:>5.3f} \t Testing accuracy: {:>5.3f}".format
+              (self.mse_cost(y_predicted=self.feed_forward(x_testing), y_actual=y_testing_one_hot),
+               self.accuracy(x_testing, y_testing_int)))
 
 
 class Layer(object):
-    def __init__(self, shape, activation):
+    def __init__(self):
         self.input = None
         self.output = None
         self.output_side_deltas = None
@@ -52,12 +121,23 @@ class SimpleLinearLayer(Layer):
         self.output = np.dot(self.input, self.w) + self.b
         return self.output
 
-    def backward_pass(self, alpha, lam=0.0):
+    def backward_pass(self, alpha_adj, lam=0.0):
         self.input_side_deltas = np.dot(self.output_side_deltas, self.w.T)
         if lam:
-            self.w += alpha * lam * self.w
-        self.w += alpha * np.dot(self.input.T, self.output_side_deltas)
-        self.b += alpha * self.output_side_deltas.sum(axis=0)
+            self.w += alpha_adj * lam * self.w
+        self.w += alpha_adj * np.dot(self.input.T, self.output_side_deltas)
+        self.b += alpha_adj * self.output_side_deltas.mean(axis=0)
+        return self.input_side_deltas
+
+
+class SigmoidLayer(Layer):
+
+    def forward_pass(self):
+        self.output = 1.0 / (1.0 + np.exp(-self.input))
+        return self.output
+
+    def backward_pass(self, alpha=None, lam=None):
+        self.input_side_deltas = self.output_side_deltas * self.output * (1.0 - self.output)
         return self.input_side_deltas
 
 
@@ -84,40 +164,15 @@ def initialize_weight_array(l, w, stddev=None, relu=False, sigma_cutoff=2.0):
     return np.array(weights).reshape(l, w)
 
 
-def read_input(lines):
-    all_input = [line.split() for line in lines.split('\n')]
-    given_data_count = int(all_input[0][1])
-    x = np.array([list(map(float, data[:-1])) for data in all_input[1: given_data_count + 1]])
-    y = np.array([[float(data[-1])] for data in all_input[1: given_data_count + 1]])
-    x_new = np.array([list(map(float, data[:-1])) for data in all_input[given_data_count + 2:]])
-    y_new = np.array([[float(data[-1])] for data in all_input[given_data_count + 2:]])
+training, validation, testing = import_and_prepare_data(0.1, 0.1)
 
-    return x, y, x_new, y_new
+# classifier_network = Classifier([SimpleLinearLayer(784, 10), SigmoidLayer()])
+#
+# classifier_network.train(training, validation, testing, alpha=0.001, epochs=100, verbose=True)
 
+better_classifier_network = Classifier([SimpleLinearLayer(784, 25),
+                                        SigmoidLayer(),
+                                        SimpleLinearLayer(25, 10),
+                                        SigmoidLayer()])
 
-input_text = "2 7\n\
-0.18 0.89 109.85\n\
-1.0 0.26 155.72\n\
-0.92 0.11 137.66\n\
-0.07 0.37 76.17\n\
-0.85 0.16 139.75\n\
-0.99 0.41 162.6\n\
-0.87 0.47 151.77\n\
-4\n\
-0.49 0.18 105.22\n\
-0.57 0.83 142.68\n\
-0.56 0.64 132.94\n\
-0.76 0.18 129.71"
-
-x_train, y_train, x_test, y_test = read_input(input_text)
-x_data = {'train': x_train, 'test': x_test}
-y_data = {'train': y_train, 'test': y_test}
-
-lin_reg_network = Network([SimpleLinearLayer(2, 1)])
-
-lin_reg_network.train(x_data, y_data, alpha=0.01, epochs=100000)
-
-print(lin_reg_network.feed_forward(x_test))
-
-
-
+better_classifier_network.train(training, validation, testing, alpha=0.01, epochs=300, verbose=True)
