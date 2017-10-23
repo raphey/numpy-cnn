@@ -234,26 +234,26 @@ def train_model(alpha=0.01, epochs=100, batch_size=10, lam=0.1):
     print("Final test accuracy: {:>5.3f}".format(accuracy(testing['x'], testing['y_as_int'])))
 
 
-training, validation, testing = import_and_prepare_data(0.1, 0.1)
-training_size = len(training['x'])
+if __name__ == "__main__":
+    training, validation, testing = import_and_prepare_data(0.1, 0.1)
+    training_size = len(training['x'])
 
+    # define layer sizes
+    l1 = 784
+    l2 = 250
+    l3 = 50
+    l4 = 10
 
-# define layer sizes
-l1 = 784
-l2 = 250
-l3 = 50
-l4 = 10
+    # initialize weights
+    w1 = initialize_weight_array(l1, l2)
+    w2 = initialize_weight_array(l2, l3)
+    w3 = initialize_weight_array(l3, l4)
 
-# initialize weights
-w1 = initialize_weight_array(l1, l2)
-w2 = initialize_weight_array(l2, l3)
-w3 = initialize_weight_array(l3, l4)
+    # initialize biases
+    b1 = np.zeros(l2)
+    b2 = np.zeros(l3)
 
-# initialize biases
-b1 = np.zeros(l2)
-b2 = np.zeros(l3)
+    train_model(batch_size=64, epochs=10)
 
-train_model(batch_size=64, epochs=10)
-
-for _ in range(10):
-    test_and_show_random_digit()
+    for _ in range(10):
+        test_and_show_random_digit()
