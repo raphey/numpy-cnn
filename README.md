@@ -3,22 +3,19 @@
 
 The purpose of this project is to build a CNN using only NumPy, plus some other convenient tools for manipulating data.
 
-The current state of the project is a MNIST non-convolutional network with two hidden layers and a testing accuracy of 98%.
+The current state of the project is a generalized non-convolutional network that can classify MNIST with ~98% accuracy.
 
 This will undoubtedly end up being influenced by [Michael Nielsen's amazing eBook](http://neuralnetworksanddeeplearning.com/), but since my goal is to learn as much as possible, I'm going to try to make something distinct.
 
 ### To-do
 
-- Put general utility functions in separate module
-- Get network/classifier class structures to match
 - Add nicer data shuffling with sci-kit-learn
 - Implement saving/loading of model
-- Implement cross-entropy loss in generalized model
-- Implement softmax classification
 - Implement ReLu activation
+- Implement dropout
 - Make a generalized non-convolutional network (weights and biases as lists, presumably)
-
-
+- Add visualization of hidden layers?
+- Batch normalization?
 
 ### File descriptions
 - [four_layer_nn.py](four_layer_nn.py): MNIST classifier network with two hidden layers, 98.1% accuracy after 200 epochs of training (~2 hours)
