@@ -1,7 +1,8 @@
 __author__ = 'raphey'
 
 import numpy as np
-from four_layer_nn import import_and_prepare_data, rough_print
+from nn_util import import_and_prepare_data
+
 
 class Network(object):
     """
@@ -30,24 +31,11 @@ class Network(object):
         self.layers[-1].forward_pass()
         return self.layers[-1].output
 
-    def feed_backward(self, delta_y_out, alpha, lam=0.0):
+    def feed_backward(self, delta_y_out, backprop_params):
         self.layers[-1].output_side_deltas = delta_y_out
         for i in range(len(self.layers) - 1, 0, -1):
-            self.layers[i - 1].output_side_deltas = self.layers[i].backward_pass(alpha)
-        self.layers[0].backward_pass(alpha)
-
-    def train(self, x_data, y_data, alpha, epochs, lam=0.0, verbose=False):
-        print("Training network with alpha={}, lambda={} for {} epochs...".format(alpha, lam, epochs))
-        x_training, x_testing = x_data['train'], x_data['test']
-        y_training, y_testing = y_data['train'], y_data['test']
-        for e in range(1, epochs + 1):
-            delta_y = y_training - self.feed_forward(x_training)
-            self.feed_backward(delta_y, alpha, lam)
-            if verbose and e % 100 == 0:
-                print("Epoch {:>3}\t Training loss: {:>5.3f}".format
-                      (e, self.mse_cost(y_predicted=self.layers[-1].output, y_actual=y_training)))
-        print("Training complete. Testing loss: {:>5.3f}".format
-              (self.mse_cost(y_predicted=self.feed_forward(x_testing), y_actual=y_testing)))
+            self.layers[i - 1].output_side_deltas = self.layers[i].backward_pass(backprop_params)
+        self.layers[0].backward_pass(backprop_params)
 
     @staticmethod
     def mse_cost(y_predicted, y_actual):
@@ -59,8 +47,7 @@ class Network(object):
 
 class Classifier(Network):
     """
-    Classifier network, with an alternate training method, and additional methods:
-
+    Classifier network, with an accuracy method and a static cross-entropy loss method
     """
 
     def accuracy(self, x_input, labels_as_values):
@@ -70,31 +57,6 @@ class Classifier(Network):
             if np.argmax(logit) == label:
                 correct += 1
         return correct / len(x_input)
-
-    def train(self, training, validation, testing, alpha, epochs, lam=0.0, verbose=False):
-        print("Training network with alpha={}, lambda={} for {} epochs...".format(alpha, lam, epochs))
-        x_training, x_testing = training['x'], testing['x']
-        y_training_int, y_testing_int = training['y_as_int'], testing['y_as_int']
-        y_training_one_hot, y_testing_one_hot = training['y_'], testing['y_']
-
-        batch_size = 16
-        num_batches = len(x_training) // batch_size
-
-        for e in range(1, epochs + 1):
-            training_loss = 0.0
-            for j in range(num_batches):
-                start_index = j * batch_size
-                end_index = start_index + batch_size
-                x = x_training[start_index: end_index]
-                y_ = y_training_one_hot[start_index: end_index]
-                delta_y = y_ - self.feed_forward(x)
-                self.feed_backward(delta_y, alpha / num_batches, lam)
-                training_loss += self.cross_entropy_cost(y_predicted=self.layers[-1].output, y_actual=y_)
-            if verbose and e % 10 == 0:
-                print("Epoch {:>3}\t Training loss: {:>5.3f}".format(e, training_loss / num_batches))
-        print("Training complete. Testing loss: {:>5.3f} \t Testing accuracy: {:>5.3f}".format
-              (self.cross_entropy_cost(y_predicted=self.feed_forward(x_testing), y_actual=y_testing_one_hot),
-               self.accuracy(x_testing, y_testing_int)))
 
     @staticmethod
     def cross_entropy_cost(y_predicted, y_actual):
@@ -108,6 +70,10 @@ class Classifier(Network):
 
 
 class Layer(object):
+    """
+    Base class for layers, which will include matrices, activation functions, and
+    convolution layers.
+    """
     def __init__(self):
         self.input = None
         self.output = None
@@ -117,12 +83,17 @@ class Layer(object):
     def forward_pass(self):
         raise NotImplementedError
 
-    def backward_pass(self):
+    def backward_pass(self, backprop_params):
         raise NotImplementedError
 
 
 class SimpleLinearLayer(Layer):
+    """
+    Linear layer in which input is multiplied by a trainable weight matrix
+    """
+
     def __init__(self, rows, cols):
+        super().__init__()
         self.shape = (rows, cols)
         self.w = initialize_weight_array(rows, cols)
         self.b = np.zeros(shape=(1, cols))
@@ -131,36 +102,44 @@ class SimpleLinearLayer(Layer):
         self.output = np.dot(self.input, self.w) + self.b
         return self.output
 
-    def backward_pass(self, alpha_adj, lam=0.0):
+    def backward_pass(self, backprop_params):
+        alpha_adj, lam_adj = backprop_params
         self.input_side_deltas = np.dot(self.output_side_deltas, self.w.T)
-        if lam:
-            self.w += alpha_adj * lam * self.w
+        if lam_adj:
+            self.w *= (1.0 - lam_adj)
         self.w += alpha_adj * np.dot(self.input.T, self.output_side_deltas)
         self.b += alpha_adj * self.output_side_deltas.mean(axis=0)
         return self.input_side_deltas
 
 
 class SigmoidLayer(Layer):
-
+    """
+    Sigmoid activation layer. Input and output have the same shape, as do the input-side and
+    output-side deltas.
+    """
     def forward_pass(self):
         self.output = 1.0 / (1.0 + np.exp(-self.input))
         return self.output
 
-    def backward_pass(self, alpha=None, lam=None):
+    def backward_pass(self, backprop_params):
+        # Backprop parameters are not used.
         self.input_side_deltas = self.output_side_deltas * self.output * (1.0 - self.output)
         return self.input_side_deltas
 
 
 class SoftmaxLayer(Layer):
-
+    """
+    Softmax activation layer, to be used right before output. Backprop is skipped entirely,
+    under the assumption that this will be used with cross-entropy loss.
+    """
     def forward_pass(self):
         exp_z = np.exp(self.input)
         sums = np.sum(exp_z, axis=1, keepdims=True)
         self.output = exp_z / sums
         return self.output
 
-    def backward_pass(self, alpha=None, lam=None):
-        # Assuming this is used with cross-entropy loss, we can just skip this layer for backprop
+    def backward_pass(self, backprop_params):
+        # Backprop parameters are not used
         self.input_side_deltas = self.output_side_deltas
         return self.input_side_deltas
 
@@ -188,6 +167,56 @@ def initialize_weight_array(l, w, stddev=None, relu=False, sigma_cutoff=2.0):
     return np.array(weights).reshape(l, w)
 
 
+def train_regression_model(regression_net, train, test, alpha, epochs, lam=0.0, verbose=False):
+    """
+    Training tool for regressions--simpler than classification tool, currently not using
+    validation or batches.
+    """
+    print("Training network with alpha={}, lambda={} for {} epochs...".format(alpha, lam, epochs))
+    x_training, x_testing = train['x'], test['x']
+    y_training, y_testing = train['y_'], test['y_']
+
+    training_size = x_training.shape[0]
+
+    for e in range(1, epochs + 1):
+        delta_y = y_training - regression_net.feed_forward(x_training)
+        regression_net.feed_backward(delta_y, alpha / training_size, lam / training_size)
+        if verbose and e % 100 == 0:
+            print("Epoch {:>3}\t Training loss: {:>5.3f}".format
+                  (e, regression_net.mse_cost(y_predicted=regression_net.layers[-1].output, y_actual=y_training)))
+    print("Training complete. Testing loss: {:>5.3f}".format
+          (regression_net.mse_cost(y_predicted=regression_net.feed_forward(x_testing), y_actual=y_testing)))
+
+
+def train_classifier_model(classifier, train, valid, test, alpha, batch_size, epochs, lam=0.0, verbose=False):
+
+    print("Training network with alpha={}, lambda={} for {} epochs...".format(alpha, lam, epochs))
+
+    x_training, x_validation, x_testing = train['x'], valid['x'], test['x']
+    y_training_int, y_validation_int, y_testing_int = train['y_as_int'], valid['y_as_int'], test['y_as_int']
+    y_training_one_hot, y_validation_one_hot, y_testing_one_hot = train['y_'], valid['y_'], test['y_']
+
+    num_batches = len(x_training) // batch_size
+
+    for e in range(1, epochs + 1):
+        training_loss = 0.0
+        for j in range(num_batches):
+            start_index = j * batch_size
+            end_index = start_index + batch_size
+            x = x_training[start_index: end_index]
+            y_ = y_training_one_hot[start_index: end_index]
+            delta_y = y_ - classifier.feed_forward(x)
+            classifier.feed_backward(delta_y, (alpha / num_batches, lam / num_batches))
+            training_loss += classifier.cross_entropy_cost(y_predicted=classifier.layers[-1].output, y_actual=y_)
+        if verbose and e % 10 == 0:
+            print("Epoch {:>3}\t Training loss: {:>5.3f}\t Validation acc: {:>5.3f}".format
+                  (e, training_loss / num_batches, classifier.accuracy(x_validation, y_validation_int)))
+
+    print("Training complete. Testing loss: {:>5.3f} \t Testing accuracy: {:>5.3f}".format
+          (classifier.cross_entropy_cost(y_predicted=classifier.feed_forward(x_testing), y_actual=y_testing_one_hot),
+           classifier.accuracy(x_testing, y_testing_int)))
+
+
 training, validation, testing = import_and_prepare_data(0.1, 0.1)
 
 # classifier_network = Classifier([SimpleLinearLayer(784, 10), SigmoidLayer()])
@@ -201,4 +230,5 @@ better_classifier_network = Classifier([SimpleLinearLayer(784, 200),
                                         SimpleLinearLayer(40, 10),
                                         SoftmaxLayer()])
 
-better_classifier_network.train(training, validation, testing, alpha=0.4, epochs=300, verbose=True)
+train_classifier_model(better_classifier_network, training, validation, testing, alpha=1.0, batch_size=10,
+                       epochs=20, lam=0.1, verbose=True)
