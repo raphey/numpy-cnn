@@ -133,24 +133,6 @@ def prediction_cel(y_actual, y_pred):
     return -1.0 / size * np.sum(y_actual * np.log(y_pred) + np.log(1.0 - y_pred) * (1.0 - y_actual))
 
 
-def make_prediction(x):
-    h1_out = np.dot(x, w1) + b1
-    sig_h1 = sigmoid(h1_out)
-    h2_out = np.dot(sig_h1, w2) + b2
-    sig_h2 = sigmoid(h2_out)
-    y_hat = np.dot(sig_h2, w3)
-    return y_hat.argmax()
-
-
-def accuracy(imgs, int_labels):
-    correct = 0.0
-    for img, int_label in zip(imgs, int_labels):
-        y_pred = make_prediction(img)
-        if y_pred == int_label:
-            correct += 1
-    return correct / len(imgs)
-
-
 def sigmoid(x):
     return np.ones(shape=x.shape) / (1.0 + np.exp(-x))
 

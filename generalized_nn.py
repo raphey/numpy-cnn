@@ -103,10 +103,10 @@ class FullyConnectedLayer(Layer):
         return self.output
 
     def backward_pass(self, backprop_params):
-        alpha_adj, lam_adj = backprop_params
+        alpha_adj, lam = backprop_params
         self.input_side_deltas = np.dot(self.output_side_deltas, self.w.T)
-        if lam_adj:
-            self.w *= (1.0 - lam_adj)
+        if lam:
+            self.w *= (1.0 - lam * alpha_adj)
         self.w += alpha_adj * np.dot(self.input.T, self.output_side_deltas)
         self.b += alpha_adj * self.output_side_deltas.mean(axis=0)
         return self.input_side_deltas
@@ -141,6 +141,28 @@ class SoftmaxLayer(Layer):
     def backward_pass(self, backprop_params):
         # Backprop parameters are not used
         self.input_side_deltas = self.output_side_deltas
+        return self.input_side_deltas
+
+
+class LReLULayer(Layer):
+    """
+    Leaky ReLU activation layer. Input and output have the same shape, as do the input-side and
+    output-side deltas.
+    """
+    def __init__(self, a=0.01):
+        super().__init__()
+        self.a = a
+
+    def forward_pass(self):
+        self.output = np.maximum(self.input, self.a * self.input)
+        return self.output
+
+    def backward_pass(self, backprop_params):
+        # Backprop parameters are not used.
+        pos_boolean = self.input >= 0
+        self.input_side_deltas = self.a * self.output_side_deltas[:]
+        self.input_side_deltas[pos_boolean] = self.output_side_deltas[pos_boolean]
+
         return self.input_side_deltas
 
 
@@ -206,9 +228,9 @@ def train_classifier_model(classifier, train, valid, test, alpha, batch_size, ep
             x = x_training[start_index: end_index]
             y_ = y_training_one_hot[start_index: end_index]
             delta_y = y_ - classifier.feed_forward(x)
-            classifier.feed_backward(delta_y, (alpha / num_batches, lam / num_batches))
+            classifier.feed_backward(delta_y, (alpha / num_batches, lam))
             training_loss += classifier.cross_entropy_cost(y_predicted=classifier.layers[-1].output, y_actual=y_)
-        if verbose and e % 10 == 0:
+        if verbose:  # and e % 10 == 0:
             print("Epoch {:>3}\t Training loss: {:>5.3f}\t Validation acc: {:>5.3f}".format
                   (e, training_loss / num_batches, classifier.accuracy(x_validation, y_validation_int)))
 
@@ -233,14 +255,32 @@ def make_classifier_network(layer_sizes):
     return Classifier(layers)
 
 
+def make_lrelu_classifier_network(layer_sizes):
+    """
+    Returns a classifier object with the specified fully connected layer sizes.
+    Each fully connected layer except for the last is followed by a LReLU
+    activation layer. Last fully connected layer is followed by a softmax layer.
+    For an MNIST network layer sizes might be something like [784, 150, 25, 10].
+    """
+    layers = []
+    for i in range(len(layer_sizes) - 2):
+        layers.append(FullyConnectedLayer(layer_sizes[i], layer_sizes[i + 1]))
+        layers.append(LReLULayer())
+    layers.append(FullyConnectedLayer(layer_sizes[-2], layer_sizes[-1]))
+    layers.append(SoftmaxLayer())
+    return Classifier(layers)
+
+
 training, validation, testing = import_and_prepare_data(0.1, 0.1)
 
-classifier_network = make_classifier_network([784, 10])
+# classifier_network = make_classifier_network([784, 10])
+#
+# train_classifier_model(classifier_network, training, validation, testing, alpha=0.001, batch_size=64,
+#                        epochs=100, verbose=True)
 
-train_classifier_model(classifier_network, training, validation, testing, alpha=0.001, batch_size=64,
-                       epochs=100, verbose=True)
-
-better_classifier_network = make_classifier_network([784, 200, 40, 10])
+better_classifier_network = make_lrelu_classifier_network([784, 250, 50, 10])
 
 train_classifier_model(better_classifier_network, training, validation, testing, alpha=1.0, batch_size=64,
-                       epochs=20, lam=0.1, verbose=True)
+                       epochs=100, lam=0.01, verbose=True)
+
+# add batch size to initial training output

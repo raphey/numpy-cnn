@@ -1,7 +1,26 @@
 __author__ = 'raphey'
 
 import numpy as np
-from nn_util import *
+from nn_util import initialize_weight_array, sigmoid, soft_max, rough_print, import_and_prepare_data
+
+
+def make_prediction(x):
+    h1_out = np.dot(x, w1) + b1
+    sig_h1 = sigmoid(h1_out)
+    h2_out = np.dot(sig_h1, w2) + b2
+    sig_h2 = sigmoid(h2_out)
+    y_hat = np.dot(sig_h2, w3)
+    return y_hat.argmax()
+
+
+def accuracy(imgs, int_labels):
+    correct = 0.0
+    for img, int_label in zip(imgs, int_labels):
+        y_pred = make_prediction(img)
+        if y_pred == int_label:
+            correct += 1
+    return correct / len(imgs)
+
 
 def test_and_show_random_digit():
     j = np.random.randint(len(testing['x']))
@@ -24,6 +43,8 @@ def test_and_show_random_digit():
         print("  {}: \t {:>5.3f}".format(predictions[k][0], predictions[k][1]))
     print("Actual value:", y)
     print()
+
+
 
 
 def train_model(alpha=0.01, epochs=100, batch_size=10, lam=0.1):
