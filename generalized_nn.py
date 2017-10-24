@@ -87,9 +87,9 @@ class Layer(object):
         raise NotImplementedError
 
 
-class SimpleLinearLayer(Layer):
+class FullyConnectedLayer(Layer):
     """
-    Linear layer in which input is multiplied by a trainable weight matrix
+    Fully connected layer in which input is multiplied by a trainable weight matrix
     """
 
     def __init__(self, rows, cols):
@@ -217,18 +217,30 @@ def train_classifier_model(classifier, train, valid, test, alpha, batch_size, ep
            classifier.accuracy(x_testing, y_testing_int)))
 
 
+def make_classifier_network(layer_sizes):
+    """
+    Returns a classifier object with the specified fully connected layer sizes.
+    Each fully connected layer except for the last is followed by a sigmoid
+    activation layer. Last fully connected layer is followed by a softmax layer.
+    For an MNIST network layer sizes might be something like [784, 150, 25, 10].
+    """
+    layers = []
+    for i in range(len(layer_sizes) - 2):
+        layers.append(FullyConnectedLayer(layer_sizes[i], layer_sizes[i + 1]))
+        layers.append(SigmoidLayer())
+    layers.append(FullyConnectedLayer(layer_sizes[-2], layer_sizes[-1]))
+    layers.append(SoftmaxLayer())
+    return Classifier(layers)
+
+
 training, validation, testing = import_and_prepare_data(0.1, 0.1)
 
-# classifier_network = Classifier([SimpleLinearLayer(784, 10), SigmoidLayer()])
-#
-# classifier_network.train(training, validation, testing, alpha=0.001, epochs=100, verbose=True)
+classifier_network = make_classifier_network([784, 10])
 
-better_classifier_network = Classifier([SimpleLinearLayer(784, 200),
-                                        SigmoidLayer(),
-                                        SimpleLinearLayer(200, 40),
-                                        SigmoidLayer(),
-                                        SimpleLinearLayer(40, 10),
-                                        SoftmaxLayer()])
+train_classifier_model(classifier_network, training, validation, testing, alpha=0.001, batch_size=64,
+                       epochs=100, verbose=True)
 
-train_classifier_model(better_classifier_network, training, validation, testing, alpha=1.0, batch_size=10,
+better_classifier_network = make_classifier_network([784, 200, 40, 10])
+
+train_classifier_model(better_classifier_network, training, validation, testing, alpha=1.0, batch_size=64,
                        epochs=20, lam=0.1, verbose=True)
