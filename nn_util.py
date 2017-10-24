@@ -2,6 +2,7 @@ __author__ = 'raphey'
 
 import numpy as np
 from sklearn.datasets import fetch_mldata
+from sklearn.utils import shuffle
 
 
 def rough_print(num_arr):
@@ -23,15 +24,10 @@ def shuffle_data(data_obj, random_seed=0):
     """
     Given a data_obj with ['data'] and ['target] entries, shuffles them and returns them as separate arrays.
     """
-    np.random.seed(seed=random_seed)
     d = data_obj['data']
     t = data_obj['target'].reshape(-1, 1)
-    joint_arr = np.hstack((d, t))
-    np.random.shuffle(joint_arr)
-    joint_arr = joint_arr.T
-    new_d = joint_arr[:784].T
-    new_t = joint_arr[-1].T
-    return new_d, new_t
+
+    return shuffle(d, t, random_state=random_seed)
 
 
 def import_and_prepare_data(valid_portion=0.1, test_portion=0.1, flat=True):
