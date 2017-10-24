@@ -9,13 +9,11 @@ This will undoubtedly end up being influenced by [Michael Nielsen's amazing eBoo
 
 ### To-do
 
-- Add nicer data shuffling with sci-kit-learn
 - Implement saving/loading of model
-- Implement ReLu activation
 - Implement dropout
-- Make a generalized non-convolutional network (weights and biases as lists, presumably)
+- Convolutional network
 - Add visualization of hidden layers?
-- Batch normalization?
+- Batch normalization? (Does this not work with the linear network structure?)
 
 ### File descriptions
 - [four_layer_nn.py](four_layer_nn.py): MNIST classifier network with two hidden layers, 98.1% accuracy after 200 epochs of training (~2 hours)
