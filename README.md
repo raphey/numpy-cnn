@@ -3,14 +3,13 @@
 
 The purpose of this project is to build a CNN using only NumPy, plus some other convenient tools for manipulating data.
 
-The current state of the project is a generalized non-convolutional network that can classify MNIST with ~98% accuracy.
+The current state of the project is a generalized non-convolutional network that can classify MNIST with ~98% accuracy. It includes leaky ReLU activation, L2 regularization, and dropout.
 
-This will undoubtedly end up being influenced by [Michael Nielsen's amazing eBook](http://neuralnetworksanddeeplearning.com/), but since my goal is to learn as much as possible, I'm going to try to make something distinct.
+This was influenced by [Michael Nielsen's amazing eBook](http://neuralnetworksanddeeplearning.com/).
 
 ### To-do
 
 - Implement saving/loading of model
-- Implement dropout
 - Convolutional network
 - Add visualization of hidden layers?
 - Batch normalization? (Does this not work with the linear network structure?)
