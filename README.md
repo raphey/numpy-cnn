@@ -18,5 +18,8 @@ This was influenced by [Michael Nielsen's amazing eBook](http://neuralnetworksan
 
 ### File descriptions
 - [four_layer_nn.py](four_layer_nn.py): MNIST classifier network with two hidden layers, 98.1% accuracy after 200 epochs of training (~2 hours)
+- [generalized_nn.py](generalized_nn.py): MNIST classifier network using flexible network and layer classes. Gets up to 98.4% after 200 epochs.
+- [nn_util.py](nn_util.py): General utility functions, including functions for importing and preparing MNIST data
+- [linear_regression_example.py](linear_regression_example.py): Example of general network being used for a simple linear regression
 
 _________________________________________
