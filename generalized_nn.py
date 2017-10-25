@@ -2,7 +2,7 @@ __author__ = 'raphey'
 
 import numpy as np
 from nn_util import import_and_prepare_data
-
+import warnings
 
 class Network(object):
     """
@@ -64,6 +64,7 @@ class Classifier(Network):
         Returns total mean-square error for predicted values and actual values.
         """
         size = len(y_actual) * len(y_actual[0])
+
         ce_cost = -1.0 / size * np.sum(y_actual * np.log(y_predicted) + np.log(1.0 - y_predicted) * (1.0 - y_actual))
 
         return ce_cost
@@ -166,6 +167,55 @@ class LReLULayer(Layer):
         return self.input_side_deltas
 
 
+class FullyConnectedLayerWithDropout(Layer):
+    """
+    Fully connected layer in which input is multiplied by a trainable weight matrix, with
+    dropout that can be turned on or off.
+    """
+
+    def __init__(self, rows, cols, keep_prob):
+        super().__init__()
+        self.shape = (rows, cols)
+        self.w = initialize_weight_array(rows, cols)
+        self.b = np.zeros(shape=(1, cols))
+        self.keep_prob = keep_prob
+        self.dropout_on = False
+        self.keep_mask = None
+
+    def forward_pass(self):
+        adjusted_weight = self.w.copy()
+
+        if self.dropout_on:
+            self.keep_mask = np.random.binomial([np.ones(self.w.shape)], self.keep_prob)[0] * (1.0 / self.keep_prob)
+            adjusted_weight *= self.keep_mask
+
+        self.output = np.dot(self.input, adjusted_weight) + self.b
+        return self.output
+
+    def backward_pass(self, backprop_params):
+        if not self.dropout_on:
+            warnings.warn("Warning: Backprop is being run without dropout, which is probably an error.")
+        alpha_adj, _ = backprop_params   # Not using L2 regularization
+
+        adjusted_weight = self.w.copy()
+
+        if self.dropout_on:
+            self.keep_mask = np.random.binomial([np.ones(self.w.shape)], self.keep_prob)[0] * (1.0 / self.keep_prob)
+            adjusted_weight *= self.keep_mask
+
+        self.input_side_deltas = np.dot(self.output_side_deltas, adjusted_weight.T)
+
+        weight_delta = alpha_adj * np.dot(self.input.T, self.output_side_deltas)
+
+        if self.dropout_on:
+            weight_delta *= self.keep_mask
+
+        self.w += weight_delta
+        self.b += alpha_adj * self.output_side_deltas.mean(axis=0)
+
+        return self.input_side_deltas
+
+
 def initialize_weight_array(l, w, stddev=None, relu=False, sigma_cutoff=2.0):
     """
     Initializes a weight array with l rows and w columns.
@@ -210,9 +260,11 @@ def train_regression_model(regression_net, train, test, alpha, epochs, lam=0.0, 
           (regression_net.mse_cost(y_predicted=regression_net.feed_forward(x_testing), y_actual=y_testing)))
 
 
-def train_classifier_model(classifier, train, valid, test, alpha, batch_size, epochs, lam=0.0, verbose=False):
+def train_classifier_model(classifier, train, valid, test, alpha, batch_size, epochs,
+                           lam=0.0, dropout_model=False, verbose=False):
 
-    print("Training network with alpha={}, lambda={} for {} epochs...".format(alpha, lam, epochs))
+    print("Training network with alpha={}, lambda={}, batch size={} for {} epochs...".format(
+          alpha, lam, batch_size, epochs))
 
     x_training, x_validation, x_testing = train['x'], valid['x'], test['x']
     y_training_int, y_validation_int, y_testing_int = train['y_as_int'], valid['y_as_int'], test['y_as_int']
@@ -227,8 +279,16 @@ def train_classifier_model(classifier, train, valid, test, alpha, batch_size, ep
             end_index = start_index + batch_size
             x = x_training[start_index: end_index]
             y_ = y_training_one_hot[start_index: end_index]
+
+            if dropout_model:
+                set_dropout_boolean(classifier, True)
+
             delta_y = y_ - classifier.feed_forward(x)
             classifier.feed_backward(delta_y, (alpha / num_batches, lam))
+
+            if dropout_model:
+                set_dropout_boolean(classifier, False)
+
             training_loss += classifier.cross_entropy_cost(y_predicted=classifier.layers[-1].output, y_actual=y_)
         if verbose:  # and e % 10 == 0:
             print("Epoch {:>3}\t Training loss: {:>5.3f}\t Validation acc: {:>5.3f}".format
@@ -239,7 +299,7 @@ def train_classifier_model(classifier, train, valid, test, alpha, batch_size, ep
            classifier.accuracy(x_testing, y_testing_int)))
 
 
-def make_classifier_network(layer_sizes):
+def make_classifier(layer_sizes):
     """
     Returns a classifier object with the specified fully connected layer sizes.
     Each fully connected layer except for the last is followed by a sigmoid
@@ -255,7 +315,7 @@ def make_classifier_network(layer_sizes):
     return Classifier(layers)
 
 
-def make_lrelu_classifier_network(layer_sizes):
+def make_lrelu_classifier(layer_sizes):
     """
     Returns a classifier object with the specified fully connected layer sizes.
     Each fully connected layer except for the last is followed by a LReLU
@@ -271,16 +331,32 @@ def make_lrelu_classifier_network(layer_sizes):
     return Classifier(layers)
 
 
+def make_lrelu_classifier_with_dropout(layer_sizes, keep_prob):
+    """
+    Returns a classifier object with the specified fully connected layer sizes.
+    Each fully connected layer except for the last is followed by a LReLU
+    activation layer. Last fully connected layer is followed by a softmax layer.
+    For an MNIST network layer sizes might be something like [784, 150, 25, 10].
+    """
+    layers = []
+    for i in range(len(layer_sizes) - 2):
+        layers.append(FullyConnectedLayerWithDropout(layer_sizes[i], layer_sizes[i + 1], keep_prob))
+        layers.append(SigmoidLayer())
+    layers.append(FullyConnectedLayerWithDropout(layer_sizes[-2], layer_sizes[-1], keep_prob))
+    layers.append(SoftmaxLayer())
+    return Classifier(layers)
+
+
+def set_dropout_boolean(network, dropout_boolean):
+    for layer in network.layers:
+        if type(layer).__name__ == 'FullyConnectedLayerWithDropout':
+            layer.dropout_on = dropout_boolean
+
+
 training, validation, testing = import_and_prepare_data(0.1, 0.1)
 
-# classifier_network = make_classifier_network([784, 10])
-#
-# train_classifier_model(classifier_network, training, validation, testing, alpha=0.001, batch_size=64,
-#                        epochs=100, verbose=True)
+# classifier_network = make_lrelu_classifier_with_dropout([784, 250, 50, 10], 0.8)
+classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 25, 10], keep_prob=0.8)
 
-better_classifier_network = make_lrelu_classifier_network([784, 250, 50, 10])
-
-train_classifier_model(better_classifier_network, training, validation, testing, alpha=1.0, batch_size=64,
-                       epochs=100, lam=0.01, verbose=True)
-
-# add batch size to initial training output
+train_classifier_model(classifier_network, training, validation, testing, alpha=1.0, batch_size=64,
+                       epochs=100, lam=0.01, dropout_model=True, verbose=True)
