@@ -62,7 +62,12 @@ class Classifier(Network):
     def cross_entropy_cost(y_predicted, y_actual):
         """
         Returns total mean-square error for predicted values and actual values.
+        Pads predicted values very close to 0.0 or 1.0 to avoid overflowing cost
         """
+        epsilon = 1e-12
+        y_predicted[y_predicted < epsilon] = epsilon
+        y_predicted[y_predicted > 1 - epsilon] = 1 - epsilon
+
         size = len(y_actual) * len(y_actual[0])
 
         ce_cost = -1.0 / size * np.sum(y_actual * np.log(y_predicted) + np.log(1.0 - y_predicted) * (1.0 - y_actual))
@@ -200,7 +205,6 @@ class FullyConnectedLayerWithDropout(Layer):
         adjusted_weight = self.w.copy()
 
         if self.dropout_on:
-            self.keep_mask = np.random.binomial([np.ones(self.w.shape)], self.keep_prob)[0] * (1.0 / self.keep_prob)
             adjusted_weight *= self.keep_mask
 
         self.input_side_deltas = np.dot(self.output_side_deltas, adjusted_weight.T)
@@ -284,12 +288,14 @@ def train_classifier_model(classifier, train, valid, test, alpha, batch_size, ep
                 set_dropout_boolean(classifier, True)
 
             delta_y = y_ - classifier.feed_forward(x)
+
             classifier.feed_backward(delta_y, (alpha / num_batches, lam))
 
             if dropout_model:
                 set_dropout_boolean(classifier, False)
 
             training_loss += classifier.cross_entropy_cost(y_predicted=classifier.layers[-1].output, y_actual=y_)
+
         if verbose:  # and e % 10 == 0:
             print("Epoch {:>3}\t Training loss: {:>5.3f}\t Validation acc: {:>5.3f}".format
                   (e, training_loss / num_batches, classifier.accuracy(x_validation, y_validation_int)))
@@ -341,7 +347,7 @@ def make_lrelu_classifier_with_dropout(layer_sizes, keep_prob):
     layers = []
     for i in range(len(layer_sizes) - 2):
         layers.append(FullyConnectedLayerWithDropout(layer_sizes[i], layer_sizes[i + 1], keep_prob))
-        layers.append(SigmoidLayer())
+        layers.append(LReLULayer())
     layers.append(FullyConnectedLayerWithDropout(layer_sizes[-2], layer_sizes[-1], keep_prob))
     layers.append(SoftmaxLayer())
     return Classifier(layers)
@@ -355,8 +361,7 @@ def set_dropout_boolean(network, dropout_boolean):
 
 training, validation, testing = import_and_prepare_data(0.1, 0.1)
 
-# classifier_network = make_lrelu_classifier_with_dropout([784, 250, 50, 10], 0.8)
-classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 25, 10], keep_prob=0.8)
+classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 250, 50, 10], keep_prob=0.85)
 
-train_classifier_model(classifier_network, training, validation, testing, alpha=1.0, batch_size=64,
-                       epochs=100, lam=0.01, dropout_model=True, verbose=True)
+train_classifier_model(classifier_network, training, validation, testing, alpha=0.1, batch_size=64,
+                       epochs=200, lam=0.00, dropout_model=True, verbose=True)
