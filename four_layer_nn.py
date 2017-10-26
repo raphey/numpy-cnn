@@ -1,7 +1,7 @@
 __author__ = 'raphey'
 
 import numpy as np
-from nn_util import initialize_weight_array, sigmoid, soft_max, rough_print, import_and_prepare_data
+from nn_util import initialize_weight_array, sigmoid, soft_max, rough_print, import_and_prepare_mnist_data
 
 
 def make_prediction(x):
@@ -97,7 +97,7 @@ def train_model(alpha=0.01, epochs=100, batch_size=10, lam=0.1):
 
 if __name__ == "__main__":
 
-    training, validation, testing = import_and_prepare_data(0.1, 0.1)
+    training, validation, testing = import_and_prepare_mnist_data(0.1, 0.1)
     training_size = len(training['x'])
 
     # define layer sizes

@@ -30,7 +30,7 @@ def shuffle_data(data_obj, random_seed=0):
     return shuffle(d, t, random_state=random_seed)
 
 
-def import_and_prepare_data(valid_portion=0.1, test_portion=0.1, flat=True):
+def import_and_prepare_mnist_data(valid_portion=0.1, test_portion=0.1, flat=True):
     """
     Imports mnist data, shuffles it, and splits it into training, validation, and testing sets.
 
@@ -49,7 +49,7 @@ def import_and_prepare_data(valid_portion=0.1, test_portion=0.1, flat=True):
     img_data, int_targets = shuffle_data(mnist)
 
     if not flat:
-        img_data = img_data.reshape(-1, 28, 28, 1)
+        img_data = img_data.reshape(-1, 1, 28, 28)
 
     scaled_data = img_data / 255.0
 
@@ -141,45 +141,31 @@ def soft_max(z):
     return exp_z / sums
 
 
-def pad_flat_image(img, top_pad, bottom_pad, left_pad, right_pad):
+def pad_image(img_array, top_pad, bottom_pad, left_pad, right_pad):
     """
-    Given a 2-D NumPy array, returns another 2-D array padded with 0s according to the
-    padding parameters.
+    Pads the width and height dimensions of an image array or batch of image arrays
+    with zeros, and returns a new padded array.
+    img_array can be a single flat image with dimensions (height, width), an image
+    with depth with dimensions (depth, height, width), or a batch of images with depth
+    with dimensions (batch size, depth, height, width).
     """
-    img_height, img_width = img.shape
-    padded_shape = img_height + top_pad + bottom_pad, img_width + left_pad + right_pad
+    img_height = img_array.shape[-2]
+    img_width = img_array.shape[-1]
+
+    # Sets the correct shape for the padded version for 2, 3, or 4 dimensions
+    padded_shape = list(img_array.shape)
+    padded_shape[-2] += top_pad + bottom_pad
+    padded_shape[-1] += left_pad + right_pad
     padded_img = np.zeros(padded_shape)
-    padded_img[top_pad: top_pad + img_height, left_pad: left_pad + img_width] = img
+
+    if len(img_array.shape) == 2:
+        padded_img[top_pad: top_pad + img_height, left_pad: left_pad + img_width] = img_array
+    elif len(img_array.shape) == 3:
+        padded_img[:, top_pad: top_pad + img_height, left_pad: left_pad + img_width] = img_array
+    else:
+        padded_img[:, :, top_pad: top_pad + img_height, left_pad: left_pad + img_width] = img_array
+
     return padded_img
-
-
-def pad_image_with_depth(img, top_pad, bottom_pad, left_pad, right_pad):
-    """
-    Given a 3-D NumPy array representing an image with a depth channel,
-    returns another 3-D array padded with 0s according to the padding parameters.
-    Top-bottom padding corresponds to first dimension, left-right to second.
-    Depth is left the same.
-    """
-    img_height, img_width, img_depth = img.shape
-    padded_shape = img_height + top_pad + bottom_pad, img_width + left_pad + right_pad, img_depth
-    padded_img = np.zeros(padded_shape)
-    padded_img[top_pad: top_pad + img_height, left_pad: left_pad + img_width, :] = img
-    return padded_img
-
-
-def pad_image_batch(img_batch, top_pad, bottom_pad, left_pad, right_pad):
-    """
-    Given a 4-D NumPy array representing a batch of images with depth channels,
-    returns another 4-D array padded with 0s according to the padding parameters.
-    Top-bottom padding corresponds to 2nd dimension, left-right to 3rd.
-    First and fourth dimensions (batch size and depth) are left the same.
-    """
-
-    batch_size, img_height, img_width, img_depth = img_batch.shape
-    padded_shape = batch_size, img_height + top_pad + bottom_pad, img_width + left_pad + right_pad, img_depth
-    padded_arr = np.zeros(padded_shape)
-    padded_arr[:, top_pad: top_pad + img_height, left_pad: left_pad + img_width, :] = img_batch
-    return padded_arr
 
 
 def flat_img_to_conv_stack(img, window_size, stride):
