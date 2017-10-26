@@ -139,3 +139,44 @@ def soft_max(z):
     exp_z = np.exp(z)
     sums = np.sum(exp_z, axis=1, keepdims=True)
     return exp_z / sums
+
+
+def pad_flat_image(img, top_pad, bottom_pad, left_pad, right_pad):
+    """
+    Given a 2-D NumPy array, returns another 2-D array padded with 0s according to the
+    padding parameters.
+    """
+    img_height, img_width = img.shape
+    padded_shape = img_height + top_pad + bottom_pad, img_width + left_pad + right_pad
+    padded_img = np.zeros(padded_shape)
+    padded_img[top_pad: top_pad + img_height, left_pad: left_pad + img_width] = img
+    return padded_img
+
+
+def pad_image_with_depth(img, top_pad, bottom_pad, left_pad, right_pad):
+    """
+    Given a 3-D NumPy array representing an image with a depth channel,
+    returns another 3-D array padded with 0s according to the padding parameters.
+    Top-bottom padding corresponds to first dimension, left-right to second.
+    Depth is left the same.
+    """
+    img_height, img_width, img_depth = img.shape
+    padded_shape = img_height + top_pad + bottom_pad, img_width + left_pad + right_pad, img_depth
+    padded_img = np.zeros(padded_shape)
+    padded_img[top_pad: top_pad + img_height, left_pad: left_pad + img_width, :] = img
+    return padded_img
+
+
+def pad_image_batch(img_batch, top_pad, bottom_pad, left_pad, right_pad):
+    """
+    Given a 4-D NumPy array representing a batch of images with depth channels,
+    returns another 4-D array padded with 0s according to the padding parameters.
+    Top-bottom padding corresponds to 2nd dimension, left-right to 3rd.
+    First and fourth dimensions (batch size and depth) are left the same.
+    """
+
+    batch_size, img_height, img_width, img_depth = img_batch.shape
+    padded_shape = batch_size, img_height + top_pad + bottom_pad, img_width + left_pad + right_pad, img_depth
+    padded_arr = np.zeros(padded_shape)
+    padded_arr[:, top_pad: top_pad + img_height, left_pad: left_pad + img_width, :] = img_batch
+    return padded_arr
