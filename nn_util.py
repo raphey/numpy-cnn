@@ -180,3 +180,21 @@ def pad_image_batch(img_batch, top_pad, bottom_pad, left_pad, right_pad):
     padded_arr = np.zeros(padded_shape)
     padded_arr[:, top_pad: top_pad + img_height, left_pad: left_pad + img_width, :] = img_batch
     return padded_arr
+
+
+def flat_img_to_conv_stack(img, window_size, stride):
+    """
+    Given a flat image, returns a convolutional stack obtained by passing a square
+    window across the image (left to right along the top, then next row down, etc).
+    Each window is unrolled into a single 1-D row, and the stack has dimensions
+    number_of_windows x window_size^2.
+    """
+    img_height, img_width = img.shape
+    unrolled_window_size = window_size ** 2
+    conv_stack = []
+
+    for i in range(0, img_height - window_size + 1, stride):
+        for j in range(0, img_width - window_size + 1, stride):
+            conv_stack.append(img[i: i + window_size, j:j + window_size].reshape(unrolled_window_size))
+
+    return np.array(conv_stack)
