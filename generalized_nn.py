@@ -230,7 +230,7 @@ class ConvolutionLayer(Layer):
         super().__init__()
         self.channels_out = channels_out
         self.channels_in = channels_in
-        self.window_size = self.window_size
+        self.window_size = window_size
         self.stride = stride
         self.pad = pad
 
@@ -245,7 +245,7 @@ class ConvolutionLayer(Layer):
         self.output_width = None
 
     def forward_pass(self):
-        self.reshaped_input = img_batch_to_conv_stacks(self.input, self.window_size, self.stride)
+        self.reshaped_input = self.img_batch_to_conv_stacks()
         self.batch_size = self.input.shape[0]
 
         reshaped_output = (np.dot(self.reshaped_input, self.filters_2d) + self.b)
@@ -258,12 +258,16 @@ class ConvolutionLayer(Layer):
 
         reshaped_output_side_deltas = self.output_side_deltas.transpose(1, 0, 2, 3).reshape(self.channels_out, -1).T
 
-        self.input_side_deltas = np.dot(reshaped_output_side_deltas, self.filters_2d.T)
+        reshaped_input_side_deltas = np.dot(reshaped_output_side_deltas, self.filters_2d.T)
+
+        self.input_side_deltas = self.conv_stack_deltas_to_input_deltas(reshaped_input_side_deltas)
 
         self.filters_2d += alpha_adj * np.dot(self.reshaped_input.T, reshaped_output_side_deltas)
         self.filters_4d = self.filters_2d.T.reshape(self.shape_4d)
 
         self.b += alpha_adj * self.output_side_deltas.sum(axis=(0, 2, 3))
+
+
 
         return self.input_side_deltas
 
@@ -276,7 +280,7 @@ class ConvolutionLayer(Layer):
         (batch size * number_of_windows) by (window_size^2 * depth).
         """
         batch_size, img_depth, img_height, img_width = self.input.shape
-        unrolled_window_size = self.window_size ** 2 * self.img_depth
+        unrolled_window_size = self.window_size ** 2 * img_depth
 
         self.output_height = (img_height - self.window_size) // self.stride + 1
         self.output_width = (img_width - self.window_size) // self.stride + 1
@@ -289,9 +293,50 @@ class ConvolutionLayer(Layer):
                     conv_stack.append(self.input[k, :, i: i + self.window_size, j:j + self.window_size].reshape(
                                       unrolled_window_size))
 
-        assert(conv_stack.shape[0] == batch_size * self.output_height * self.output_width)
-
         return np.array(conv_stack)
+
+    def conv_stack_deltas_to_input_deltas(self, reshaped_input_side_deltas):
+        reshaped_input_side_deltas = reshaped_input_side_deltas.reshape(self.batch_size, self.output_height,
+                                                                        self.output_width, -1)
+        deconvolved_input_side_deltas = np.zeros(self.input.shape)
+
+        for k in range(self.batch_size):
+            for i in range(self.output_height):
+                for j in range(self.output_width):
+                    patch_to_add = reshaped_input_side_deltas[k][i][j].reshape(self.channels_in, self.window_size,
+                                                                               self.window_size)
+                    in_side_i = self.stride * i
+                    in_side_j = self.stride * j
+                    deconvolved_input_side_deltas[0, 0:self.channels_in, in_side_i: in_side_i + self.window_size,
+                                                  in_side_j: in_side_j + self.window_size] += patch_to_add
+
+        return deconvolved_input_side_deltas
+
+class ConvolutionFullyConnectedBridge(Layer):
+    """
+    Layer that connects a 4-D (batch_size, conv_output_channels, conv_output_height, conv_output_width) input to a
+    2-D output (batch_size, conv_output_channels * conv_output_height * conv_output_width)
+    """
+
+    def __init__(self, conv_output_channels, conv_output_height, conv_output_width):
+        super().__init__()
+        self.conv_output_channels = conv_output_channels
+        self.conv_output_height = conv_output_height
+        self.conv_output_width = conv_output_width
+
+        self.batch_size = None
+
+    def forward_pass(self):
+        self.batch_size = self.input.shape[0]
+        self.output = self.input.reshape(self.batch_size, -1)
+        return self.output
+
+    def backward_pass(self, backprop_params):
+        _, _ = backprop_params   # Ignoring backprop params, since there's nothing to train
+
+        self.input_side_deltas = self.output_side_deltas.reshape(self.batch_size, self.conv_output_channels,
+                                                                 self.conv_output_height, self.conv_output_width)
+        return self.input_side_deltas
 
 
 def initialize_weight_array(l, w, stddev=None, relu=False, sigma_cutoff=2.0):
@@ -370,7 +415,7 @@ def train_classifier_model(classifier, train, valid, test, alpha, batch_size, ep
 
             training_loss += classifier.cross_entropy_cost(y_predicted=classifier.layers[-1].output, y_actual=y_)
 
-        if verbose and e % 5 == 0:
+        if verbose and e % 1 == 0:
             print("Epoch {:>3}\t Training loss: {:>5.3f}\t Validation acc: {:>5.3f}".format
                   (e, training_loss / num_batches, classifier.accuracy(x_validation, y_validation_int)))
 
@@ -433,10 +478,31 @@ def set_dropout_boolean(network, dropout_boolean):
             layer.dropout_on = dropout_boolean
 
 
+def make_cnn_classifier():
+    """
+    """
+    layers = [ConvolutionLayer(channels_out=16, channels_in=1, window_size=3, stride=2),
+              LReLULayer(),
+              ConvolutionLayer(channels_out=64, channels_in=16, window_size=3, stride=2),
+              LReLULayer(),
+              ConvolutionFullyConnectedBridge(64, 6, 6),
+              FullyConnectedLayer(2304, 10),
+              SoftmaxLayer()]
+    return Classifier(layers)
+
+
 if __name__ == "__main__":
-    training, validation, testing = import_and_prepare_mnist_data(0.1, 0.1)
+    # training, validation, testing = import_and_prepare_mnist_data(0.1, 0.1)
+    # classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 250, 50, 10], keep_prob=0.80)
+    # train_classifier_model(classifier_network, training, validation, testing, alpha=0.1, batch_size=64,
+    #                        epochs=200, lam=0.00, dropout_model=True, verbose=True)
+    # (The above non-convolutional classifier gets up to 98.3%)
 
-    classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 250, 50, 10], keep_prob=0.80)
+    training, validation, testing = import_and_prepare_mnist_data(0.1, 0.1, flat=False)
 
-    train_classifier_model(classifier_network, training, validation, testing, alpha=0.1, batch_size=64,
-                           epochs=200, lam=0.00, dropout_model=True, verbose=True)
+    cnn_classifier = make_cnn_classifier()
+
+    print("Classifier created")
+
+    train_classifier_model(cnn_classifier, training, validation, testing, alpha=0.1, batch_size=64,
+                           epochs=200, lam=0.00, dropout_model=False, verbose=True)
