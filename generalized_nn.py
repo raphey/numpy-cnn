@@ -1,8 +1,9 @@
 __author__ = 'raphey'
 
 import numpy as np
-from nn_util import import_and_prepare_data
+from nn_util import import_and_prepare_mnist_data
 import warnings
+
 
 class Network(object):
     """
@@ -98,10 +99,10 @@ class FullyConnectedLayer(Layer):
     Fully connected layer in which input is multiplied by a trainable weight matrix
     """
 
-    def __init__(self, rows, cols):
+    def __init__(self, rows, cols, relu=False):
         super().__init__()
         self.shape = (rows, cols)
-        self.w = initialize_weight_array(rows, cols)
+        self.w = initialize_weight_array(rows, cols, relu=relu)
         self.b = np.zeros(shape=(1, cols))
 
     def forward_pass(self):
@@ -114,7 +115,7 @@ class FullyConnectedLayer(Layer):
         if lam:
             self.w *= (1.0 - lam * alpha_adj)
         self.w += alpha_adj * np.dot(self.input.T, self.output_side_deltas)
-        self.b += alpha_adj * self.output_side_deltas.mean(axis=0)
+        self.b += alpha_adj * self.output_side_deltas.sum(axis=0)
         return self.input_side_deltas
 
 
@@ -178,10 +179,10 @@ class FullyConnectedLayerWithDropout(Layer):
     dropout that can be turned on or off.
     """
 
-    def __init__(self, rows, cols, keep_prob):
+    def __init__(self, rows, cols, keep_prob, relu=False):
         super().__init__()
         self.shape = (rows, cols)
-        self.w = initialize_weight_array(rows, cols)
+        self.w = initialize_weight_array(rows, cols, relu=relu)
         self.b = np.zeros(shape=(1, cols))
         self.keep_prob = keep_prob
         self.dropout_on = False
@@ -215,9 +216,82 @@ class FullyConnectedLayerWithDropout(Layer):
             weight_delta *= self.keep_mask
 
         self.w += weight_delta
-        self.b += alpha_adj * self.output_side_deltas.mean(axis=0)
+        self.b += alpha_adj * self.output_side_deltas.sum(axis=0)
 
         return self.input_side_deltas
+
+
+class ConvolutionLayer(Layer):
+    """
+    Fully connected layer in which input is multiplied by a trainable weight matrix
+    """
+
+    def __init__(self, channels_out, channels_in, window_size, stride, pad=False, relu=True):
+        super().__init__()
+        self.channels_out = channels_out
+        self.channels_in = channels_in
+        self.window_size = self.window_size
+        self.stride = stride
+        self.pad = pad
+
+        self.shape_4d = (channels_out, channels_in, window_size, window_size)
+        self.filters_2d = initialize_weight_array(channels_in * window_size**2, channels_out, relu=relu)
+        self.filters_4d = self.filters_2d.T.reshape(self.shape_4d)
+        self.b = np.zeros(shape=(1, channels_out))
+
+        self.batch_size = None
+        self.reshaped_input = None
+        self.output_height = None
+        self.output_width = None
+
+    def forward_pass(self):
+        self.reshaped_input = img_batch_to_conv_stacks(self.input, self.window_size, self.stride)
+        self.batch_size = self.input.shape[0]
+
+        reshaped_output = (np.dot(self.reshaped_input, self.filters_2d) + self.b)
+        self.output = reshaped_output.T.reshape(self.channels_out, self.batch_size,
+                                                self.output_height, self.output_width).transpose(1, 0, 2, 3)
+        return self.output
+
+    def backward_pass(self, backprop_params):
+        alpha_adj, _ = backprop_params   # Ignoring lambda
+
+        reshaped_output_side_deltas = self.output_side_deltas.transpose(1, 0, 2, 3).reshape(self.channels_out, -1).T
+
+        self.input_side_deltas = np.dot(reshaped_output_side_deltas, self.filters_2d.T)
+
+        self.filters_2d += alpha_adj * np.dot(self.reshaped_input.T, reshaped_output_side_deltas)
+        self.filters_4d = self.filters_2d.T.reshape(self.shape_4d)
+
+        self.b += alpha_adj * self.output_side_deltas.sum(axis=(0, 2, 3))
+
+        return self.input_side_deltas
+
+    def img_batch_to_conv_stacks(self):
+        """
+        Takes the current input, a batch of images with depth, and sets the reshape_input property to be series
+        of convolutional stacks obtained by passing a square prism window with matching depth across each image
+        (left to right along the top, then next row down, etc, then same for remaining channels, then next image).
+        Each window prism is unrolled into a single 1-D row, and the stack array has dimensions
+        (batch size * number_of_windows) by (window_size^2 * depth).
+        """
+        batch_size, img_depth, img_height, img_width = self.input.shape
+        unrolled_window_size = self.window_size ** 2 * self.img_depth
+
+        self.output_height = (img_height - self.window_size) // self.stride + 1
+        self.output_width = (img_width - self.window_size) // self.stride + 1
+
+        conv_stack = []
+
+        for k in range(0, batch_size):
+            for i in range(0, img_height - self.window_size + 1, self.stride):
+                for j in range(0, img_width - self.window_size + 1, self.stride):
+                    conv_stack.append(self.input[k, :, i: i + self.window_size, j:j + self.window_size].reshape(
+                                      unrolled_window_size))
+
+        assert(conv_stack.shape[0] == batch_size * self.output_height * self.output_width)
+
+        return np.array(conv_stack)
 
 
 def initialize_weight_array(l, w, stddev=None, relu=False, sigma_cutoff=2.0):
@@ -256,7 +330,7 @@ def train_regression_model(regression_net, train, test, alpha, epochs, lam=0.0, 
 
     for e in range(1, epochs + 1):
         delta_y = y_training - regression_net.feed_forward(x_training)
-        regression_net.feed_backward(delta_y, alpha / training_size, lam / training_size)
+        regression_net.feed_backward(delta_y, [alpha / training_size, lam])
         if verbose and e % 100 == 0:
             print("Epoch {:>3}\t Training loss: {:>5.3f}".format
                   (e, regression_net.mse_cost(y_predicted=regression_net.layers[-1].output, y_actual=y_training)))
@@ -296,7 +370,7 @@ def train_classifier_model(classifier, train, valid, test, alpha, batch_size, ep
 
             training_loss += classifier.cross_entropy_cost(y_predicted=classifier.layers[-1].output, y_actual=y_)
 
-        if verbose:  # and e % 10 == 0:
+        if verbose and e % 5 == 0:
             print("Epoch {:>3}\t Training loss: {:>5.3f}\t Validation acc: {:>5.3f}".format
                   (e, training_loss / num_batches, classifier.accuracy(x_validation, y_validation_int)))
 
@@ -330,7 +404,7 @@ def make_lrelu_classifier(layer_sizes):
     """
     layers = []
     for i in range(len(layer_sizes) - 2):
-        layers.append(FullyConnectedLayer(layer_sizes[i], layer_sizes[i + 1]))
+        layers.append(FullyConnectedLayer(layer_sizes[i], layer_sizes[i + 1], relu=True))
         layers.append(LReLULayer())
     layers.append(FullyConnectedLayer(layer_sizes[-2], layer_sizes[-1]))
     layers.append(SoftmaxLayer())
@@ -346,7 +420,7 @@ def make_lrelu_classifier_with_dropout(layer_sizes, keep_prob):
     """
     layers = []
     for i in range(len(layer_sizes) - 2):
-        layers.append(FullyConnectedLayerWithDropout(layer_sizes[i], layer_sizes[i + 1], keep_prob))
+        layers.append(FullyConnectedLayerWithDropout(layer_sizes[i], layer_sizes[i + 1], keep_prob, relu=True))
         layers.append(LReLULayer())
     layers.append(FullyConnectedLayerWithDropout(layer_sizes[-2], layer_sizes[-1], keep_prob))
     layers.append(SoftmaxLayer())
@@ -359,9 +433,10 @@ def set_dropout_boolean(network, dropout_boolean):
             layer.dropout_on = dropout_boolean
 
 
-training, validation, testing = import_and_prepare_data(0.1, 0.1)
+if __name__ == "__main__":
+    training, validation, testing = import_and_prepare_mnist_data(0.1, 0.1)
 
-classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 250, 50, 10], keep_prob=0.85)
+    classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 250, 50, 10], keep_prob=0.80)
 
-train_classifier_model(classifier_network, training, validation, testing, alpha=0.1, batch_size=64,
-                       epochs=200, lam=0.00, dropout_model=True, verbose=True)
+    train_classifier_model(classifier_network, training, validation, testing, alpha=0.1, batch_size=64,
+                           epochs=200, lam=0.00, dropout_model=True, verbose=True)

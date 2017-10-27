@@ -203,24 +203,3 @@ def deep_img_to_conv_stack(img, window_size, stride):
             conv_stack.append(img[:, i: i + window_size, j:j + window_size].reshape(unrolled_window_size))
 
     return np.array(conv_stack)
-
-
-def img_batch_to_conv_stacks(img_batch, window_size, stride):
-    """
-    Given a batch of images with depth, returns a batch of convolutional stacks obtained by passing a
-    square prism window with matching depth across each image (left to right along the top, then next row
-    down, etc).
-    Each window prism is unrolled into a single 1-D row, and the stack array has dimensions
-    (batch size * number_of_windows) by (window_size^2 * depth).
-    """
-    batch_size, img_depth, img_height, img_width = img_batch.shape
-    unrolled_window_size = window_size ** 2 * img_depth
-
-    conv_stack = []
-
-    for k in range(0, batch_size):
-        for i in range(0, img_height - window_size + 1, stride):
-            for j in range(0, img_width - window_size + 1, stride):
-                conv_stack.append(img_batch[k, :, i: i + window_size, j:j + window_size].reshape(unrolled_window_size))
-
-    return np.array(conv_stack)
