@@ -8,13 +8,13 @@ The purpose of this project is to build a modular CNN using only NumPy. So far, 
 - Dropout and L2 regularization
 - Convolutional layer without any regularization or padding
 
-The best accuracy I've gotten so far is 98.3%, using two hidden layers and dropout. The goal is to get something over 99%.
+The best accuracy I've gotten so far is 98.7%, using two convolutional layers and a fully connected layer with dropout. The goal is to get something over 99%.
 
 This was influenced by [Michael Nielsen's amazing eBook](http://neuralnetworksanddeeplearning.com/), and I also found [this explanation of CNN backprop](https://wiseodd.github.io/techblog/2016/07/16/convnet-conv-layer/) really helpful.
 
 ### To-do
 
-- Add dropout (and lambda?) to convolution layer
+- Add lambda to convolution layer?
 - Add same padding option to convolution layer
 - Use flexible parameters to make CNN, vs hardcoded layers
 - Train an MNIST classifier to above 99%

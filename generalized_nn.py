@@ -481,12 +481,22 @@ def set_dropout_boolean(network, dropout_boolean):
 def make_cnn_classifier():
     """
     """
-    layers = [ConvolutionLayer(channels_out=16, channels_in=1, window_size=3, stride=2),
+    # layers = [ConvolutionLayer(channels_out=16, channels_in=1, window_size=3, stride=2),
+    #           LReLULayer(),
+    #           ConvolutionLayer(channels_out=64, channels_in=16, window_size=3, stride=2),
+    #           LReLULayer(),
+    #           ConvolutionFullyConnectedBridge(64, 6, 6),
+    #           FullyConnectedLayer(2304, 10),
+    #           SoftmaxLayer()]
+
+    layers = [ConvolutionLayer(channels_out=32, channels_in=1, window_size=5, stride=2),
               LReLULayer(),
-              ConvolutionLayer(channels_out=64, channels_in=16, window_size=3, stride=2),
+              ConvolutionLayer(channels_out=64, channels_in=32, window_size=5, stride=2),
               LReLULayer(),
-              ConvolutionFullyConnectedBridge(64, 6, 6),
-              FullyConnectedLayer(2304, 10),
+              ConvolutionFullyConnectedBridge(64, 4, 4),
+              FullyConnectedLayerWithDropout(1024, 10, keep_prob=0.8),
+              # LReLULayer(),
+              # FullyConnectedLayerWithDropout(64, 10, keep_prob=0.8),
               SoftmaxLayer()]
     return Classifier(layers)
 
@@ -504,5 +514,5 @@ if __name__ == "__main__":
 
     print("Classifier created")
 
-    train_classifier_model(cnn_classifier, training, validation, testing, alpha=0.1, batch_size=64,
-                           epochs=200, lam=0.00, dropout_model=False, verbose=True)
+    train_classifier_model(cnn_classifier, training, validation, testing, alpha=1.0, batch_size=64,
+                           epochs=30, lam=0.00, dropout_model=True, verbose=True)
