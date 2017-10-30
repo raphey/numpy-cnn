@@ -1,7 +1,7 @@
 __author__ = 'raphey'
 
 import numpy as np
-from nn_util import import_and_prepare_mnist_data
+from nn_util import import_and_prepare_mnist_data, pad_image
 import warnings
 
 
@@ -240,11 +240,26 @@ class ConvolutionLayer(Layer):
         self.b = np.zeros(shape=(1, channels_out))
 
         self.batch_size = None
+        self.padded_input = None
+        self.top_pad = None
+        self.bottom_pad = None
+        self.left_pad = None
+        self.right_pad = None
         self.reshaped_input = None
         self.output_height = None
         self.output_width = None
 
     def forward_pass(self):
+        if self.pad:
+            _, _, input_h, input_w = self.input.shape
+            self.top_pad = (self.window_size - 1) // 2
+            self.bottom_pad = self.window_size // 2 - (input_h - 1) % self.stride
+            self.left_pad = (self.window_size - 1) // 2
+            self.right_pad = self.window_size // 2 - (input_w - 1) % self.stride
+            self.padded_input = pad_image(self.input, self.top_pad, self.bottom_pad, self.left_pad, self.right_pad)
+        else:
+            self.padded_input = self.input
+
         self.reshaped_input = self.img_batch_to_conv_stacks()
         self.batch_size = self.input.shape[0]
 
@@ -261,6 +276,10 @@ class ConvolutionLayer(Layer):
         reshaped_input_side_deltas = np.dot(reshaped_output_side_deltas, self.filters_2d.T)
 
         self.input_side_deltas = self.conv_stack_deltas_to_input_deltas(reshaped_input_side_deltas)
+
+        if self.pad:
+            self.input_side_deltas = self.input_side_deltas[:, :, self.top_pad: -self.bottom_pad,
+                                                            self.left_pad: - self.right_pad]
 
         self.filters_2d += alpha_adj * np.dot(self.reshaped_input.T, reshaped_output_side_deltas)
         self.filters_4d = self.filters_2d.T.reshape(self.shape_4d)
@@ -279,7 +298,7 @@ class ConvolutionLayer(Layer):
         Each window prism is unrolled into a single 1-D row, and the stack array has dimensions
         (batch size * number_of_windows) by (window_size^2 * depth).
         """
-        batch_size, img_depth, img_height, img_width = self.input.shape
+        batch_size, img_depth, img_height, img_width = self.padded_input.shape
         unrolled_window_size = self.window_size ** 2 * img_depth
 
         self.output_height = (img_height - self.window_size) // self.stride + 1
@@ -290,7 +309,7 @@ class ConvolutionLayer(Layer):
         for k in range(0, batch_size):
             for i in range(0, img_height - self.window_size + 1, self.stride):
                 for j in range(0, img_width - self.window_size + 1, self.stride):
-                    conv_stack.append(self.input[k, :, i: i + self.window_size, j:j + self.window_size].reshape(
+                    conv_stack.append(self.padded_input[k, :, i: i + self.window_size, j:j + self.window_size].reshape(
                                       unrolled_window_size))
 
         return np.array(conv_stack)
@@ -298,7 +317,7 @@ class ConvolutionLayer(Layer):
     def conv_stack_deltas_to_input_deltas(self, reshaped_input_side_deltas):
         reshaped_input_side_deltas = reshaped_input_side_deltas.reshape(self.batch_size, self.output_height,
                                                                         self.output_width, -1)
-        deconvolved_input_side_deltas = np.zeros(self.input.shape)
+        deconvolved_input_side_deltas = np.zeros(self.padded_input.shape)
 
         for k in range(self.batch_size):
             for i in range(self.output_height):
@@ -311,6 +330,7 @@ class ConvolutionLayer(Layer):
                                                   in_side_j: in_side_j + self.window_size] += patch_to_add
 
         return deconvolved_input_side_deltas
+
 
 class ConvolutionFullyConnectedBridge(Layer):
     """
@@ -489,12 +509,12 @@ def make_cnn_classifier():
     #           FullyConnectedLayer(2304, 10),
     #           SoftmaxLayer()]
 
-    layers = [ConvolutionLayer(channels_out=32, channels_in=1, window_size=5, stride=2),
+    layers = [ConvolutionLayer(channels_out=48, channels_in=1, window_size=5, stride=3, pad=True),
               LReLULayer(),
-              ConvolutionLayer(channels_out=64, channels_in=32, window_size=5, stride=2),
+              ConvolutionLayer(channels_out=96, channels_in=48, window_size=5, stride=3, pad=True),
               LReLULayer(),
-              ConvolutionFullyConnectedBridge(64, 4, 4),
-              FullyConnectedLayerWithDropout(1024, 10, keep_prob=0.8),
+              ConvolutionFullyConnectedBridge(96, 4, 4),
+              FullyConnectedLayerWithDropout(1536, 10, keep_prob=0.6),
               # LReLULayer(),
               # FullyConnectedLayerWithDropout(64, 10, keep_prob=0.8),
               SoftmaxLayer()]
@@ -515,4 +535,4 @@ if __name__ == "__main__":
     print("Classifier created")
 
     train_classifier_model(cnn_classifier, training, validation, testing, alpha=1.0, batch_size=64,
-                           epochs=30, lam=0.00, dropout_model=True, verbose=True)
+                           epochs=50, lam=0.00, dropout_model=True, verbose=True)
