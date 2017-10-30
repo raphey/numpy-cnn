@@ -1,12 +1,12 @@
 ## Making a convolutional neural network with NumPy
 
 
-The purpose of this project is to build a modular CNN using only NumPy. So far, the project includes the following features:
+The purpose of this project is to build a CNN using only NumPy. So far, the project includes the following features:
 
 - Generalized network class created with layer sizes as parameters
 - Sigmoid and leaky ReLU activation
 - Dropout and L2 regularization
-- Convolutional layer without any regularization or padding
+- Convolutional layer with same-padding option, no regularization
 
 The best accuracy I've gotten so far is 98.7%, using two convolutional layers and a fully connected layer with dropout. The goal is to get something over 99%.
 
@@ -15,13 +15,13 @@ This was influenced by [Michael Nielsen's amazing eBook](http://neuralnetworksan
 ### To-do
 
 - Add lambda to convolution layer?
-- Add same padding option to convolution layer
 - Use flexible parameters to make CNN, vs hardcoded layers
+- CNN creation should print parameters
 - Train an MNIST classifier to above 99%
 - Implement saving/loading of model?
 - Add visualization of hidden layers?
 - Try on CIFAR-10?
-- Batch normalization? (might run into trouble with the linear network structure)
+- Batch normalization? (might run into trouble with the linear network structure?)
 
 ### File descriptions
 - [generalized_nn.py](generalized_nn.py): MNIST classifier network using flexible network and layer classes. Gets up to 98.4% after 200 epochs.
