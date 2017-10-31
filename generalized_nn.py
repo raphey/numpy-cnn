@@ -278,8 +278,10 @@ class ConvolutionLayer(Layer):
         self.input_side_deltas = self.conv_stack_deltas_to_input_deltas(reshaped_input_side_deltas)
 
         if self.pad:
-            self.input_side_deltas = self.input_side_deltas[:, :, self.top_pad: -self.bottom_pad,
-                                                            self.left_pad: - self.right_pad]
+            new_bottom_index = self.input_side_deltas.shape[2] - self.bottom_pad
+            new_right_index = self.input_side_deltas.shape[3] - self.right_pad
+            self.input_side_deltas = self.input_side_deltas[:, :, self.top_pad: new_bottom_index,
+                                                            self.left_pad: new_right_index]
 
         self.filters_2d += alpha_adj * np.dot(self.reshaped_input.T, reshaped_output_side_deltas)
         self.filters_4d = self.filters_2d.T.reshape(self.shape_4d)
@@ -509,15 +511,28 @@ def make_cnn_classifier():
     #           FullyConnectedLayer(2304, 10),
     #           SoftmaxLayer()]
 
-    layers = [ConvolutionLayer(channels_out=48, channels_in=1, window_size=5, stride=3, pad=True),
+    # layers = [ConvolutionLayer(channels_out=48, channels_in=1, window_size=5, stride=3, pad=True),
+    #           LReLULayer(),
+    #           ConvolutionLayer(channels_out=96, channels_in=48, window_size=5, stride=3, pad=True),
+    #           LReLULayer(),
+    #           ConvolutionFullyConnectedBridge(96, 4, 4),
+    #           FullyConnectedLayerWithDropout(1536, 10, keep_prob=0.6),
+    #           # LReLULayer(),
+    #           # FullyConnectedLayerWithDropout(64, 10, keep_prob=0.8),
+    #           SoftmaxLayer()]
+
+    layers = [ConvolutionLayer(channels_out=4, channels_in=1, window_size=3, stride=2, pad=True),
               LReLULayer(),
-              ConvolutionLayer(channels_out=96, channels_in=48, window_size=5, stride=3, pad=True),
+              ConvolutionLayer(channels_out=8, channels_in=4, window_size=3, stride=2, pad=True),
               LReLULayer(),
-              ConvolutionFullyConnectedBridge(96, 4, 4),
-              FullyConnectedLayerWithDropout(1536, 10, keep_prob=0.6),
+              ConvolutionLayer(channels_out=16, channels_in=8, window_size=3, stride=2, pad=True),
+              LReLULayer(),
+              ConvolutionFullyConnectedBridge(16, 4, 4),
+              FullyConnectedLayerWithDropout(256, 10, keep_prob=0.6),
               # LReLULayer(),
               # FullyConnectedLayerWithDropout(64, 10, keep_prob=0.8),
               SoftmaxLayer()]
+
     return Classifier(layers)
 
 
