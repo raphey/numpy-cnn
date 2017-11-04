@@ -500,52 +500,96 @@ def set_dropout_boolean(network, dropout_boolean):
             layer.dropout_on = dropout_boolean
 
 
-def make_cnn_classifier():
+def old_make_cnn_classifier():
     """
+    Draft of a CNN classifier
     """
-    # layers = [ConvolutionLayer(channels_out=16, channels_in=1, window_size=3, stride=2),
-    #           LReLULayer(),
-    #           ConvolutionLayer(channels_out=64, channels_in=16, window_size=3, stride=2),
-    #           LReLULayer(),
-    #           ConvolutionFullyConnectedBridge(64, 6, 6),
-    #           FullyConnectedLayer(2304, 10),
-    #           SoftmaxLayer()]
-
-    # layers = [ConvolutionLayer(channels_out=48, channels_in=1, window_size=5, stride=3, pad=True),
-    #           LReLULayer(),
-    #           ConvolutionLayer(channels_out=96, channels_in=48, window_size=5, stride=3, pad=True),
-    #           LReLULayer(),
-    #           ConvolutionFullyConnectedBridge(96, 4, 4),
-    #           FullyConnectedLayerWithDropout(1536, 10, keep_prob=0.6),
-    #           # LReLULayer(),
-    #           # FullyConnectedLayerWithDropout(64, 10, keep_prob=0.8),
-    #           SoftmaxLayer()]
-
-    layers = [ConvolutionLayer(channels_out=4, channels_in=1, window_size=3, stride=2, pad=True),
+    layers = [ConvolutionLayer(channels_out=32, channels_in=1, window_size=5, stride=2, pad=True),
               LReLULayer(),
-              ConvolutionLayer(channels_out=8, channels_in=4, window_size=3, stride=2, pad=True),
+              ConvolutionLayer(channels_out=64, channels_in=32, window_size=5, stride=2, pad=True),
               LReLULayer(),
-              ConvolutionLayer(channels_out=16, channels_in=8, window_size=3, stride=2, pad=True),
+              ConvolutionFullyConnectedBridge(64, 7, 7),
+              FullyConnectedLayerWithDropout(3136, 180, keep_prob=0.5),
               LReLULayer(),
-              ConvolutionFullyConnectedBridge(16, 4, 4),
-              FullyConnectedLayerWithDropout(256, 10, keep_prob=0.6),
-              # LReLULayer(),
-              # FullyConnectedLayerWithDropout(64, 10, keep_prob=0.8),
+              FullyConnectedLayerWithDropout(180, 10, keep_prob=0.5),
               SoftmaxLayer()]
+    print("""[ConvolutionLayer(channels_out=32, channels_in=1, window_size=5, stride=2, pad=True),
+              LReLULayer(),
+              ConvolutionLayer(channels_out=64, channels_in=32, window_size=5, stride=2, pad=True),
+              LReLULayer(),
+              ConvolutionFullyConnectedBridge(64, 7, 7),
+              FullyConnectedLayerWithDropout(3136, 180, keep_prob=0.5),
+              LReLULayer(),
+              FullyConnectedLayerWithDropout(180, 10, keep_prob=0.5),
+              SoftmaxLayer()]""")
+    return Classifier(layers)
+
+
+def make_cnn_classifier(input_shape, conv_layer_list, fully_connected_layer_list=None, keep_prob=0.5):
+    """
+    Function to create CNN classifier, given the following parameters:
+
+    input_shape: tuple of (depth, height, width) which is (1, 28, 28) for MNIST
+
+    conv_layer_list: list of layer parameters in the form (window_size, stride, out_channels, padded_boolean)
+
+    fully_connected_layer_list: list of optional additional fully connected layer sizes, where a list [1000, 200]
+      would result in two additional layers after the convolution layers, for a total of three layers. These would be
+      ? to 1000, 1000 to 200, and 200 to 10, where the ? is determined by the output of the final convolutional layer.
+
+    keep_prob: the keep probability for the dropout in the fully connected layers.
+    """
+
+    if fully_connected_layer_list is None:
+        fully_connected_layer_list = []
+
+    current_depth, current_height, current_width = input_shape
+    layers = []
+
+    print("Creating CNN with the following layers:")
+
+    for win_size, stride, out_chan, pad_bool in conv_layer_list:
+        layers.append(ConvolutionLayer(channels_out=out_chan, channels_in=current_depth, window_size=win_size,
+                                       stride=stride, pad=pad_bool))
+        print("\tConvolution layer. Window size: ({}, {})\tStride: ({}, {})\tOutput channels: {:3}\tPadding: {}".format(
+              win_size, win_size, stride, stride, out_chan, pad_bool))
+
+        layers.append(LReLULayer())
+        current_depth = out_chan
+        if pad_bool:
+            current_height += win_size - 1 - (current_height - 1) % stride
+            current_width += win_size - 1 - (current_width - 1) % stride
+        current_height = (current_height - win_size) // stride + 1
+        current_width = (current_width - win_size) // stride + 1
+
+    layers.append(ConvolutionFullyConnectedBridge(current_depth, current_height, current_width))
+
+    fully_connected_size = current_depth * current_height * current_width
+
+    for layer_size in fully_connected_layer_list:
+        layers.append(FullyConnectedLayerWithDropout(fully_connected_size, layer_size, keep_prob=keep_prob))
+        print("\tFully connected layer. {} to {} with keep probability {}".format(
+              fully_connected_size, layer_size, keep_prob))
+        fully_connected_size = layer_size
+        layers.append(LReLULayer())
+
+    layers.append(FullyConnectedLayerWithDropout(fully_connected_size, 10, keep_prob=keep_prob))
+
+    print("\tFully connected layer. {} to {} with keep probability {}".format(
+          fully_connected_size, 10, keep_prob))
+
+    layers.append(SoftmaxLayer())
 
     return Classifier(layers)
 
 
 if __name__ == "__main__":
-    # training, validation, testing = import_and_prepare_mnist_data(0.1, 0.1)
-    # classifier_network = make_lrelu_classifier_with_dropout(layer_sizes=[784, 250, 50, 10], keep_prob=0.80)
-    # train_classifier_model(classifier_network, training, validation, testing, alpha=0.1, batch_size=64,
-    #                        epochs=200, lam=0.00, dropout_model=True, verbose=True)
-    # (The above non-convolutional classifier gets up to 98.3%)
-
     training, validation, testing = import_and_prepare_mnist_data(0.1, 0.1, flat=False)
 
-    cnn_classifier = make_cnn_classifier()
+    conv_layer_parameters = [(5, 2, 64, True), (5, 2, 128, True)]
+    fully_connected_parameters = [400]
+
+    cnn_classifier = make_cnn_classifier((1, 28, 28), conv_layer_parameters, fully_connected_parameters)
 
     print("Classifier created")
 
