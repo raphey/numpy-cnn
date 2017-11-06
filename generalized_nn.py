@@ -269,7 +269,7 @@ class ConvolutionLayer(Layer):
         return self.output
 
     def backward_pass(self, backprop_params):
-        alpha_adj, _ = backprop_params   # Ignoring lambda
+        alpha_adj, lam = backprop_params
 
         reshaped_output_side_deltas = self.output_side_deltas.transpose(1, 0, 2, 3).reshape(self.channels_out, -1).T
 
@@ -288,7 +288,9 @@ class ConvolutionLayer(Layer):
 
         self.b += alpha_adj * self.output_side_deltas.sum(axis=(0, 2, 3))
 
-
+        if lam:
+            self.filters_2d *= (1.0 - lam * alpha_adj)
+            self.filters_4d *= (1.0 - lam * alpha_adj)
 
         return self.input_side_deltas
 
@@ -594,4 +596,4 @@ if __name__ == "__main__":
     print("Classifier created")
 
     train_classifier_model(cnn_classifier, training, validation, testing, alpha=1.0, batch_size=64,
-                           epochs=50, lam=0.00, dropout_model=True, verbose=True)
+                           epochs=50, lam=0.01, dropout_model=True, verbose=True)
